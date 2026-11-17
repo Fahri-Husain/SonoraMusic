@@ -52,6 +52,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
 
@@ -64,10 +65,11 @@ private const val ROUTE_PLAYLIST = "playlist/{id}"
 private const val ROUTE_PLAYER = "player"
 private const val ROUTE_PICK = "pick/{index}"
 private const val ROUTE_REPLAY = "replay"
+private const val ROUTE_ARTIST = "artist/{name}"
 private const val ROUTE_MOST_PLAYED = "most_played"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
-private const val TAB_SLIDE_MS = 350
+internal const val TAB_SLIDE_MS = 350
 
 /** +1: pindah ke tab di kanan (Beranda -> Koleksi), -1: ke tab di kiri (Koleksi -> Beranda), 0: bukan keduanya. */
 private fun tabSlideDirection(from: String?, to: String?): Int = when {
@@ -108,7 +110,7 @@ fun AppRoot(
     }
     val onPlayerScreen = route == ROUTE_PLAYER
     val currentTab = when (route) {
-        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED -> BottomTab.COLLECTION
+        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST -> BottomTab.COLLECTION
         ROUTE_SEARCH -> BottomTab.SEARCH
         else -> BottomTab.HOME
     }
@@ -243,15 +245,37 @@ fun AppRoot(
                         // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat statistik berubah
                         val replayStats by libraryViewModel.replayStats.collectAsState()
                         val artistImages by libraryViewModel.artistImages.collectAsState()
+                        val songAlbums by libraryViewModel.songAlbums.collectAsState()
                         Box(Modifier.fillMaxSize()) {
                             ReplayScreen(
                                 stats = replayStats,
                                 artistImages = artistImages,
                                 onRequestArtistImage = libraryViewModel::requestArtistImage,
+                                songAlbums = songAlbums,
+                                onRequestSongAlbum = libraryViewModel::requestSongAlbum,
+                                onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                                 onBack = { navController.popBackStack() },
                                 onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Replay") }
                             )
                         }
+                    }
+
+                    composable(
+                        route = ROUTE_ARTIST,
+                        arguments = listOf(navArgument("name") { type = NavType.StringType })
+                    ) { entry ->
+                        val name = entry.arguments?.getString("name").orEmpty()
+                        val artistViewModel: ArtistViewModel = viewModel()
+                        val artistState by artistViewModel.state.collectAsState()
+                        LaunchedEffect(name) { artistViewModel.load(name) }
+
+                        ArtistScreen(
+                            state = artistState,
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Artis \"$name\"") }
+                        )
                     }
 
                     composable(ROUTE_MOST_PLAYED) {

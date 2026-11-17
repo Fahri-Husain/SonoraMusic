@@ -69,8 +69,50 @@ private val MonthLong = listOf(
 private const val SONGS_PER_PAGE = 4
 private const val MAX_SONGS = 12
 private const val MAX_ARTISTS = 10
+private const val MAX_ALBUMS = 10
+
+/** Album dicari dari lagu-lagu teratas saja, supaya tidak menembak YouTube untuk semua lagu. */
+private const val ALBUM_LOOKUP_LIMIT = 30
 
 private val Muted = Color.White.copy(alpha = 0.45f)
+
+private data class TopAlbum(
+    val key: String,
+    val title: String,
+    val artist: String,
+    val coverUrl: String?,
+    val plays: Int,
+    val listenedMs: Long
+)
+
+/**
+ * Kelompokkan lagu bulan ini per album (judul + artis utama), jumlahkan waktu dengar dan play-nya.
+ * Lagu yang albumnya belum diketahui dilewati. Sampul diambil dari lagu yang paling sering diputar.
+ */
+private fun buildTopAlbums(songs: List<MonthSong>, songAlbums: Map<String, String>): List<TopAlbum> {
+    class Entry(val album: String, val artist: String, val item: MonthSong)
+
+    return songs
+        .mapNotNull { item ->
+            val album = songAlbums[item.song.url]?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+            Entry(album, item.song.artist.substringBefore(',').trim(), item)
+        }
+        .groupBy { it.album.lowercase() + "|" + it.artist.lowercase() }
+        .map { (key, group) ->
+            val byPlays = group.sortedWith(
+                compareByDescending<Entry> { it.item.plays }.thenByDescending { it.item.listenedMs }
+            )
+            TopAlbum(
+                key = key,
+                title = byPlays.first().album,
+                artist = byPlays.first().artist,
+                coverUrl = byPlays.firstNotNullOfOrNull { it.item.song.thumbnailUrl },
+                plays = group.sumOf { it.item.plays },
+                listenedMs = group.sumOf { it.item.listenedMs }
+            )
+        }
+        .sortedWith(compareByDescending<TopAlbum> { it.listenedMs }.thenByDescending { it.plays })
+}
 
 private fun monthKey(year: Int, month: Int) = "%04d-%02d".format(year, month)
 
@@ -85,6 +127,9 @@ fun ReplayScreen(
     stats: Map<String, MonthStats>,
     artistImages: Map<String, String>,
     onRequestArtistImage: (String) -> Unit,
+    songAlbums: Map<String, String>,
+    onRequestSongAlbum: (Song) -> Unit,
+    onOpenArtist: (String) -> Unit,
     onBack: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
     modifier: Modifier = Modifier
@@ -110,6 +155,17 @@ fun ReplayScreen(
     }
     // Minta foto profil untuk artis yang tampil (hasilnya di-cache)
     LaunchedEffect(topArtists) { topArtists.forEach { onRequestArtistImage(it.name) } }
+
+    // Album tiap lagu dicari dulu (di-cache), lalu lagu dikelompokkan per album
+    val albumLookup = remember(monthStats) {
+        monthStats.songs
+            .sortedWith(compareByDescending<MonthSong> { it.plays }.thenByDescending { it.listenedMs })
+            .take(ALBUM_LOOKUP_LIMIT)
+    }
+    LaunchedEffect(albumLookup) { albumLookup.forEach { onRequestSongAlbum(it.song) } }
+    val topAlbums = remember(monthStats, songAlbums) {
+        buildTopAlbums(monthStats.songs, songAlbums).take(MAX_ALBUMS)
+    }
 
     val totalMs = monthStats.totalMs
     val hasData = monthStats.songs.isNotEmpty()
@@ -232,7 +288,8 @@ fun ReplayScreen(
                                 ArtistCard(
                                     rank = index + 1,
                                     artist = artist,
-                                    imageUrl = artistImages[ArtistImageRepository.keyOf(artist.name)]
+                                    imageUrl = artistImages[ArtistImageRepository.keyOf(artist.name)],
+                                    onClick = { onOpenArtist(artist.name) }
                                 )
                             }
                         }
@@ -266,6 +323,20 @@ fun ReplayScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                if (topAlbums.isNotEmpty()) {
+                    item { SectionHeading("Your Top Albums", topPadding = 32.dp) }
+                    item {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            itemsIndexed(topAlbums, key = { _, a -> a.key }) { index, album ->
+                                AlbumCard(rank = index + 1, album = album)
                             }
                         }
                     }
@@ -316,7 +387,7 @@ private fun YearPill(year: Int, years: List<Int>, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun ArtistCard(rank: Int, artist: MonthArtist, imageUrl: String?) {
+private fun ArtistCard(rank: Int, artist: MonthArtist, imageUrl: String?, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
@@ -325,6 +396,7 @@ private fun ArtistCard(rank: Int, artist: MonthArtist, imageUrl: String?) {
             .clip(shape)
             .background(Sonora.SurfaceHigh)
             .border(1.dp, Sonora.Border, shape)
+            .clickable(onClick = onClick)
     ) {
         if (imageUrl != null) {
             AsyncImage(
@@ -382,6 +454,57 @@ private fun ArtistCard(rank: Int, artist: MonthArtist, imageUrl: String?) {
                 fontSize = 12.sp,
                 color = Color.White.copy(alpha = 0.7f)
             )
+        }
+    }
+}
+
+@Composable
+private fun AlbumCard(rank: Int, album: TopAlbum) {
+    val shape = RoundedCornerShape(12.dp)
+    Column(modifier = Modifier.width(150.dp)) {
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .clip(shape)
+                .background(Sonora.SurfaceHigh)
+                .border(1.dp, Sonora.Border, shape)
+        ) {
+            if (album.coverUrl != null) {
+                AsyncImage(
+                    model = album.coverUrl,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Text(
+                text = "$rank",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier.width(22.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = album.title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = album.artist,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }

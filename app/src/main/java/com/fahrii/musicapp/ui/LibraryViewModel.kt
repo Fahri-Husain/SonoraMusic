@@ -2,6 +2,7 @@ package com.fahrii.musicapp.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import com.fahrii.musicapp.data.AlbumRepository
 import com.fahrii.musicapp.data.ArtistImageRepository
 import com.fahrii.musicapp.data.HistoryRepository
 import com.fahrii.musicapp.data.LibraryRepository
@@ -19,11 +20,17 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     private val historyRepo = HistoryRepository.getInstance(app)
     private val replayRepo = ReplayRepository.getInstance(app)
     private val artistImageRepo = ArtistImageRepository.getInstance(app)
+    private val albumRepo = AlbumRepository.getInstance(app)
 
     /** Foto profil artis (kunci: nama artis huruf kecil). */
     val artistImages: StateFlow<Map<String, String>> = artistImageRepo.images
 
     fun requestArtistImage(name: String) = artistImageRepo.request(name)
+
+    /** Nama album tiap lagu (kunci: URL lagu) untuk "Your Top Albums". */
+    val songAlbums: StateFlow<Map<String, String>> = albumRepo.albums
+
+    fun requestSongAlbum(song: Song) = albumRepo.request(song)
 
     /** Statistik dengar per bulan (kunci "2026-03") untuk layar Replay. */
     val replayStats: StateFlow<Map<String, MonthStats>> = replayRepo.stats

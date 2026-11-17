@@ -4,13 +4,30 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import java.util.concurrent.ConcurrentHashMap
 import org.schabi.newpipe.extractor.MediaFormat
+
+data class ArtistProfile(
+    val name: String,
+    val imageUrl: String?,
+    val bio: String?,
+    /** -1 kalau tidak diketahui. */
+    val subscribers: Long
+)
+
+data class ArtistAlbum(
+    val title: String,
+    val artist: String,
+    val coverUrl: String?,
+    val url: String
+)
 
 object MusicRepository {
 
@@ -84,6 +101,114 @@ object MusicRepository {
 
         runCatching { pick(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS) }.getOrNull()
             ?: runCatching { pick(YoutubeSearchQueryHandlerFactory.CHANNELS) }.getOrNull()
+    }
+
+    /**
+     * Profil artis untuk halaman artis: foto, bio (dari halaman channel, fallback ke cuplikan
+     * hasil pencarian), dan jumlah subscriber. Null kalau artisnya tidak ketemu.
+     */
+    suspend fun findArtistProfile(name: String): ArtistProfile? = withContext(Dispatchers.IO) {
+        ensureInit()
+
+        fun pick(filter: String): ChannelInfoItem? {
+            val extractor = ServiceList.YouTube.getSearchExtractor(name, listOf(filter), "")
+            extractor.fetchPage()
+            val channels = extractor.initialPage.items.filterIsInstance<ChannelInfoItem>()
+            return channels.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: channels.firstOrNull()
+        }
+
+        val best = runCatching { pick(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS) }.getOrNull()
+            ?: runCatching { pick(YoutubeSearchQueryHandlerFactory.CHANNELS) }.getOrNull()
+
+        if (best == null) {
+            null
+        } else {
+            val bio = runCatching { ChannelInfo.getInfo(ServiceList.YouTube, best.url).description }
+                .getOrNull()
+                ?.trim()?.takeIf { it.isNotEmpty() }
+                ?: best.description?.trim()?.takeIf { it.isNotEmpty() }
+
+            ArtistProfile(
+                name = best.name,
+                imageUrl = hdThumbnail(best.thumbnails.lastOrNull()?.url),
+                bio = bio,
+                subscribers = best.subscriberCount
+            )
+        }
+    }
+
+    /** Lagu-lagu populer sebuah artis (hasil teratas pencarian lagu YouTube Music). */
+    suspend fun searchArtistSongs(name: String, limit: Int = 10): List<Song> {
+        val all = search(name)
+        val own = all.filter { it.artist.contains(name, ignoreCase = true) }
+        return own.ifEmpty { all }.take(limit)
+    }
+
+    /** Album-album sebuah artis (pencarian album YouTube Music, disaring menurut nama artis). */
+    suspend fun searchArtistAlbums(name: String, limit: Int = 12): List<ArtistAlbum> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+
+            val extractor = ServiceList.YouTube.getSearchExtractor(
+                name,
+                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS),
+                ""
+            )
+            extractor.fetchPage()
+
+            val items = extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
+            // Kalau nama artis di hasil tersedia, pakai untuk menyaring album artis lain
+            val hasArtist = items.any { !it.uploaderName.isNullOrBlank() }
+            val own = if (hasArtist) {
+                items.filter { it.uploaderName?.contains(name, ignoreCase = true) == true }
+            } else {
+                items
+            }
+
+            own
+                .map { item ->
+                    ArtistAlbum(
+                        title = item.name,
+                        artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: name,
+                        coverUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                        url = item.url
+                    )
+                }
+                .distinctBy { it.title.lowercase() }
+                .take(limit)
+        }
+
+    /**
+     * Cari nama album sebuah lagu dari deskripsi videonya. Lagu resmi di YouTube Music punya
+     * deskripsi otomatis berformat:
+     *
+     *     Provided to YouTube by <label>
+     *
+     *     <Judul> · <Artis>
+     *
+     *     <Album>
+     *
+     *     ℗ <tahun> ...
+     *
+     * Mengembalikan null kalau formatnya tidak cocok (mis. video yang diunggah sendiri).
+     */
+    suspend fun findAlbumName(videoUrl: String): String? = withContext(Dispatchers.IO) {
+        ensureInit()
+        val info = StreamInfo.getInfo(ServiceList.YouTube, videoUrl)
+        parseAlbumFromDescription(info.description?.content)
+    }
+
+    internal fun parseAlbumFromDescription(description: String?): String? {
+        if (description.isNullOrBlank()) return null
+        val lines = description.lines().map { it.trim() }
+        val provided = lines.indexOfFirst { it.startsWith("Provided to YouTube by", ignoreCase = true) }
+        if (provided < 0) return null
+        // Baris "Judul · Artis", lalu baris berikutnya yang tidak kosong adalah album
+        val titleLine = (provided + 1 until lines.size).firstOrNull { " · " in lines[it] } ?: return null
+        return lines.drop(titleLine + 1)
+            .firstOrNull { it.isNotEmpty() }
+            ?.takeUnless { it.startsWith("℗") || it.startsWith("Released on", ignoreCase = true) }
     }
 
     /**
