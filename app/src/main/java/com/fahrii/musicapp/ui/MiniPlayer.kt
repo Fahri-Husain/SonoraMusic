@@ -50,7 +50,7 @@ fun MiniPlayer(
         modifier = modifier
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .fillMaxWidth()
-            .glass(backdrop, RoundedCornerShape(28.dp))
+            .glass(backdrop, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically

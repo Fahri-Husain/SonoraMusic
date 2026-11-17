@@ -16,6 +16,7 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
+import androidx.compose.ui.graphics.RectangleShape
 
 // Satu tempat untuk nama tipe, supaya kalau import library beda cukup dibetulkan di file ini
 typealias GlassBackdrop = LayerBackdrop

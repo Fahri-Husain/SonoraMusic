@@ -8,6 +8,9 @@ import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /**
  * Chart & rilis baru dari API publik Deezer (tanpa API key).
@@ -30,9 +33,33 @@ object ChartRepository {
         getData("$BASE/chart/0/tracks?limit=$limit").mapNotNull { it.toTrackSong() }
     }
 
-    suspend fun newReleases(limit: Int = 20): List<Song> = withContext(Dispatchers.IO) {
-        getData("$BASE/editorial/0/releases?limit=$limit").mapNotNull { it.toAlbumSong() }
-    }
+    suspend fun newReleases(limit: Int = 20, maxAgeDays: Long = 45): List<Song> =
+        withContext(Dispatchers.IO) {
+            val today = java.time.LocalDate.now()
+            val from = today.minusDays(maxAgeDays).toString()   // format yyyy-MM-dd
+            val to = today.toString()
+
+            val artists = getData("$BASE/chart/0/artists?limit=25")
+            val albums = coroutineScope {
+                artists.map { artist ->
+                    async {
+                        runCatching {
+                            getData("$BASE/artist/${artist.optLong("id")}/albums?limit=10")
+                        }.getOrDefault(emptyList()).onEach { album ->
+                            // endpoint ini nggak menyertakan nama artis, jadi diisi manual
+                            album.put("artist", JSONObject().put("name", artist.optString("name")))
+                        }
+                    }
+                }.awaitAll().flatten()
+            }
+
+            albums
+                .filter { it.optString("release_date") in from..to }
+                .distinctBy { it.optLong("id") }
+                .sortedByDescending { it.optString("release_date") }
+                .take(limit)
+                .mapNotNull { it.toAlbumSong() }
+        }
 
     suspend fun topArtists(limit: Int = 10): List<ArtistStat> = withContext(Dispatchers.IO) {
         getData("$BASE/chart/0/artists?limit=$limit").mapNotNull { o ->

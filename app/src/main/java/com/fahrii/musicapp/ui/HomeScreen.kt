@@ -62,6 +62,8 @@ import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.delay
 import java.util.Calendar
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.ui.unit.Dp
 
 private data class Genre(val name: String, val query: String, val accent: Color)
 
@@ -96,21 +98,19 @@ fun HomeScreen(
     onPlay: (List<Song>, Int) -> Unit,
     onGenreClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    onHistoryClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    listState: LazyListState,
+    topInset: Dp,
+    modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsState()
     val artists by viewModel.artists.collectAsState()
 
-    Column(modifier = modifier.fillMaxSize()) {
-        HomeHeader(onHistoryClick = onHistoryClick, onSettingsClick = onSettingsClick)
-
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 24.dp + LocalBottomInset.current),
-            verticalArrangement = Arrangement.spacedBy(28.dp)
-        ) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = topInset + 12.dp, bottom = 24.dp + LocalBottomInset.current),
+        verticalArrangement = Arrangement.spacedBy(28.dp)
+    ) {
             if (state.error != null) {
                 item {
                     Row(
@@ -146,10 +146,12 @@ fun HomeScreen(
                 }
             }
 
-            item {
-                Column {
-                    SectionTitle("Rilis Baru", action = "Lainnya")
-                    SongCardRow(state.newReleases, onPlay)
+            if (state.isLoading || state.newReleases.isNotEmpty()) {
+                item {
+                    Column {
+                        SectionTitle("Rilis Baru", action = "Lainnya")
+                        SongCardRow(state.newReleases, onPlay)
+                    }
                 }
             }
 
@@ -181,10 +183,14 @@ fun HomeScreen(
             }
         }
     }
-}
+
 
 @Composable
-private fun HomeHeader(onHistoryClick: () -> Unit, onSettingsClick: () -> Unit) {
+fun HomeHeader(
+    onHistoryClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     // Sapaan ikut jam, dicek ulang tiap 30 detik
     var hour by remember { mutableIntStateOf(currentHour()) }
     LaunchedEffect(Unit) {
@@ -195,7 +201,7 @@ private fun HomeHeader(onHistoryClick: () -> Unit, onSettingsClick: () -> Unit) 
     }
 
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -480,9 +486,9 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, onClick: () -> Unit) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.width(32.dp)
         )
-        Column(
-            modifier = Modifier.widthIn(max = 140.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
                 model = artist.imageUrl,
@@ -490,7 +496,7 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, onClick: () -> Unit) {
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.size(52.dp).clip(CircleShape).background(Sonora.SurfaceHigh)
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.width(12.dp))
             Text(
                 text = artist.name,
                 fontSize = 13.sp,

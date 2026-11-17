@@ -1,22 +1,28 @@
 package com.fahrii.musicapp.ui
 
+import android.R.attr.alpha
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -29,6 +35,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.padding
 
 
 private const val ROUTE_HOME = "home"
@@ -61,6 +69,14 @@ fun AppRoot(
 
     // Sumber blur: halaman di belakang, bar mengambang mengambil gambarnya dari sini
     val backdrop = rememberGlassBackdrop()
+    val homeListState = rememberLazyListState()
+    val scrolled by remember {
+        derivedStateOf {
+            homeListState.firstVisibleItemIndex > 0 || homeListState.firstVisibleItemScrollOffset > 0
+        }
+    }
+    val headerGlassAlpha by animateFloatAsState(if (scrolled) 1f else 0f, label = "headerGlass")
+    var headerHeightPx by remember { mutableIntStateOf(0) }
 
     // Tinggi bar mengambang diukur, supaya daftar bisa di-scroll sampai tidak ketutup
     val density = LocalDensity.current
@@ -87,7 +103,7 @@ fun AppRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .glassSource(backdrop)
-                        .statusBarsPadding()
+                        .then(if (route == ROUTE_HOME) Modifier else Modifier.statusBarsPadding())
                         .then(if (onPlayerScreen) Modifier.navigationBarsPadding() else Modifier)
                 ) {
                     composable(ROUTE_HOME) {
@@ -95,7 +111,9 @@ fun AppRoot(
                             viewModel = homeViewModel,
                             onPlay = playerViewModel::playQueue,
                             onGenreClick = ::openSearch,
-                            onArtistClick = ::openSearch
+                            onArtistClick = ::openSearch,
+                            listState = homeListState,
+                            topInset = with(density) { headerHeightPx.toDp() }
                         )
                     }
 
@@ -159,6 +177,30 @@ fun AppRoot(
                             onBack = { navController.popBackStack() }
                         )
                     }
+                }
+            }
+
+            if (route == ROUTE_HOME) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .onSizeChanged { headerHeightPx = it.height }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer { alpha = headerGlassAlpha }
+                            .glass(
+                                backdrop,
+                                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+                            )
+                    )
+                    HomeHeader(
+                        onHistoryClick = {},
+                        onSettingsClick = {},
+                        modifier = Modifier.statusBarsPadding()
+                    )
                 }
             }
 

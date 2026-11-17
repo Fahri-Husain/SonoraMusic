@@ -101,11 +101,10 @@ fun SonoraBottomBar(
                 .clickable { onSelect(BottomTab.SEARCH) },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = AppIcons.Search,
-                contentDescription = "Cari",
-                tint = if (searchSelected) Color.White else Color.White.copy(alpha = 0.7f),
-                modifier = Modifier.size(26.dp)
+            NavIcon(
+                on = R.drawable.ic_search,
+                off = R.drawable.ic_search,
+                selected = searchSelected
             )
         }
     }
