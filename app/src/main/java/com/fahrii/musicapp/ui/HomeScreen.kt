@@ -98,6 +98,7 @@ fun HomeScreen(
     onPlay: (List<Song>, Int) -> Unit,
     onGenreClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
+    onPickClick: (Int) -> Unit,
     listState: LazyListState,
     topInset: Dp,
     modifier: Modifier = Modifier
@@ -135,9 +136,10 @@ fun HomeScreen(
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(state.quickPicks, key = { it.label }) { pick ->
+                        itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
                             QuickPickCard(
                                 pick = pick,
+                                onOpen = { onPickClick(index) },
                                 onPlay = { onPlay(pick.songs, 0) },
                                 modifier = Modifier.fillParentMaxWidth(0.86f)
                             )
@@ -243,7 +245,7 @@ private fun SectionTitle(title: String, action: String? = null) {
 // ---------- Pilihan Cepat ----------
 
 @Composable
-private fun QuickPickCard(pick: QuickPick, onPlay: () -> Unit, modifier: Modifier = Modifier) {
+private fun QuickPickCard(pick: QuickPick, onOpen: () -> Unit, onPlay: () -> Unit, modifier: Modifier = Modifier) {
     val shape = remember { NotchedCardShape() }
 
     Box(
@@ -252,7 +254,7 @@ private fun QuickPickCard(pick: QuickPick, onPlay: () -> Unit, modifier: Modifie
             .clip(shape)
             .background(Sonora.Surface)
             .border(1.dp, Sonora.Border, shape)
-            .clickable(onClick = onPlay)
+            .clickable(onClick = onOpen)
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(
@@ -260,8 +262,7 @@ private fun QuickPickCard(pick: QuickPick, onPlay: () -> Unit, modifier: Modifie
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White),
-                    contentAlignment = Alignment.Center
+                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onPlay),
                 ) {
                     Icon(
                         imageVector = AppIcons.Play,

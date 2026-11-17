@@ -45,6 +45,7 @@ private const val ROUTE_LIBRARY = "library"
 private const val ROUTE_LIKED = "liked"
 private const val ROUTE_PLAYLIST = "playlist/{id}"
 private const val ROUTE_PLAYER = "player"
+private const val ROUTE_PICK = "pick/{index}"
 
 @Composable
 fun AppRoot(
@@ -103,7 +104,7 @@ fun AppRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .glassSource(backdrop)
-                        .then(if (route == ROUTE_HOME) Modifier else Modifier.statusBarsPadding())
+                        .then(if (route == ROUTE_HOME || route == ROUTE_PICK) Modifier else Modifier.statusBarsPadding())
                         .then(if (onPlayerScreen) Modifier.navigationBarsPadding() else Modifier)
                 ) {
                     composable(ROUTE_HOME) {
@@ -113,6 +114,7 @@ fun AppRoot(
                             onGenreClick = ::openSearch,
                             onArtistClick = ::openSearch,
                             listState = homeListState,
+                            onPickClick = { navController.navigate("pick/$it") },
                             topInset = with(density) { headerHeightPx.toDp() }
                         )
                     }
@@ -176,6 +178,27 @@ fun AppRoot(
                             libraryViewModel = libraryViewModel,
                             onBack = { navController.popBackStack() }
                         )
+                    }
+
+                    composable(
+                        route = ROUTE_PICK,
+                        arguments = listOf(navArgument("index") { type = NavType.IntType })
+                    ) { entry ->
+                        val index = entry.arguments?.getInt("index") ?: 0
+                        val homeState by homeViewModel.state.collectAsState()
+                        val pick = homeState.quickPicks.getOrNull(index)
+
+                        if (pick == null) {
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            PickDetailScreen(
+                                pick = pick,
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying,
+                                onBack = { navController.popBackStack() },
+                                onPlay = playerViewModel::playQueue
+                            )
+                        }
                     }
                 }
             }
