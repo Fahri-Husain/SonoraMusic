@@ -104,8 +104,9 @@ fun AppRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .glassSource(backdrop)
-                        .then(if (route == ROUTE_HOME || route == ROUTE_PICK) Modifier else Modifier.statusBarsPadding())
+                        .then(if (route == ROUTE_HOME || route == ROUTE_PICK || onPlayerScreen) Modifier else Modifier.statusBarsPadding())
                         .then(if (onPlayerScreen) Modifier.navigationBarsPadding() else Modifier)
+
                 ) {
                     composable(ROUTE_HOME) {
                         HomeScreen(

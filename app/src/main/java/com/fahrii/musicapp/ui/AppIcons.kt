@@ -27,6 +27,8 @@ import com.adamglin.phosphoricons.regular.Trash
 import com.adamglin.phosphoricons.bold.ClockCounterClockwise
 import com.adamglin.phosphoricons.fill.Gear
 import com.adamglin.phosphoricons.fill.House
+import com.adamglin.phosphoricons.fill.SkipBack
+import com.adamglin.phosphoricons.fill.SkipForward
 
 val HeartColor = Color(0xFFFF2D55) // pink khas iOS
 
@@ -55,4 +57,6 @@ object AppIcons {
     val Home: ImageVector = PhosphorIcons.Fill.House
     val Settings: ImageVector = PhosphorIcons.Fill.Gear
     val History: ImageVector = PhosphorIcons.Bold.ClockCounterClockwise
+    val SkipPrevious: ImageVector = PhosphorIcons.Fill.SkipBack
+    val SkipNext: ImageVector = PhosphorIcons.Fill.SkipForward
 }

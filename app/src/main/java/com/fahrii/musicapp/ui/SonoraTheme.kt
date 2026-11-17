@@ -12,6 +12,7 @@ object Sonora {
     val SurfaceHigh = Color(0xFF28282C)
     val Border = Color(0xFF3A3A40)
     val TextSecondary = Color(0xFF8E8E93)
+    val Accent = Color(0xFFCDB8FF)   // ungu lavender, senada garis diagonal & kartu genre di Beranda
 }
 
 val SonoraColorScheme = darkColorScheme(
