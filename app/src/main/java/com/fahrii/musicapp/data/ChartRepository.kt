@@ -97,7 +97,8 @@ object ChartRepository {
         if (title.isBlank()) return null
         val artist = optJSONObject("artist")?.optString("name").orEmpty()
         val album = optJSONObject("album")
-        val cover = album?.optString("cover_big").orEmpty()
+        val cover = album?.optString("cover_xl").orEmpty()
+            .ifBlank { album?.optString("cover_big").orEmpty() }
             .ifBlank { album?.optString("cover_medium").orEmpty() }
         return Song(
             url = searchUrl(title, artist),
@@ -112,7 +113,9 @@ object ChartRepository {
         val title = optString("title")
         if (title.isBlank()) return null
         val artist = optJSONObject("artist")?.optString("name").orEmpty()
-        val cover = optString("cover_big").ifBlank { optString("cover_medium") }
+        val cover = optString("cover_xl")
+            .ifBlank { optString("cover_big") }
+            .ifBlank { optString("cover_medium") }
         return Song(
             url = searchUrl(title, artist),
             title = title,

@@ -263,6 +263,7 @@ private fun QuickPickCard(pick: QuickPick, onOpen: () -> Unit, onPlay: () -> Uni
             ) {
                 Box(
                     modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onPlay),
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = AppIcons.Play,

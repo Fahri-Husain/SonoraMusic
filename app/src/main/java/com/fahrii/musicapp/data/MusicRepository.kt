@@ -33,6 +33,15 @@ object MusicRepository {
         }
     }
 
+    private fun hdThumbnail(url: String?): String? {
+        if (url == null) return null
+        return when {
+            "googleusercontent.com" in url || "ggpht.com" in url ->
+                url.replace(Regex("=(w\\d+-h\\d+|s\\d+).*$"), "=w800-h800-l90-rj")
+            else -> url
+        }
+    }
+
     suspend fun search(query: String): List<Song> = withContext(Dispatchers.IO) {
         ensureInit()
 
@@ -50,7 +59,7 @@ object MusicRepository {
                     url = item.url,
                     title = item.name,
                     artist = item.uploaderName ?: "Unknown artist",
-                    thumbnailUrl = item.thumbnails.lastOrNull()?.url,
+                    thumbnailUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url),
                     durationSeconds = item.duration
                 )
             }
