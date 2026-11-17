@@ -1,7 +1,17 @@
 package com.fahrii.musicapp.ui
 
 import android.R.attr.alpha
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -103,10 +113,38 @@ fun AppRoot(
                     startDestination = ROUTE_HOME,
                     modifier = Modifier
                         .fillMaxSize()
-                        .glassSource(backdrop)
-                        .then(if (route == ROUTE_HOME || route == ROUTE_PICK || onPlayerScreen) Modifier else Modifier.statusBarsPadding())
-                        .then(if (onPlayerScreen) Modifier.navigationBarsPadding() else Modifier)
-
+                        .glassSource(backdrop),
+                    // Player naik dari bawah saat dibuka dan turun lagi saat kembali (hanya geser,
+                    // tanpa fade, supaya ringan). Halaman di belakangnya diam.
+                    enterTransition = {
+                        if (targetState.destination.route == ROUTE_PLAYER) {
+                            slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it }
+                        } else {
+                            fadeIn(tween(300))
+                        }
+                    },
+                    exitTransition = {
+                        if (targetState.destination.route == ROUTE_PLAYER) {
+                            // Halaman di belakang diam; player menutupinya sambil naik
+                            ExitTransition.None
+                        } else {
+                            fadeOut(tween(300))
+                        }
+                    },
+                    popEnterTransition = {
+                        if (initialState.destination.route == ROUTE_PLAYER) {
+                            EnterTransition.None
+                        } else {
+                            fadeIn(tween(300))
+                        }
+                    },
+                    popExitTransition = {
+                        if (initialState.destination.route == ROUTE_PLAYER) {
+                            slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
+                        } else {
+                            fadeOut(tween(300))
+                        }
+                    }
                 ) {
                     composable(ROUTE_HOME) {
                         HomeScreen(
@@ -121,32 +159,38 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_SEARCH) {
-                        SearchScreen(
-                            viewModel = searchViewModel,
-                            onSongClick = { songs, index -> playerViewModel.playQueue(songs, index) }
-                        )
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            SearchScreen(
+                                viewModel = searchViewModel,
+                                onSongClick = { songs, index -> playerViewModel.playQueue(songs, index) }
+                            )
+                        }
                     }
 
                     composable(ROUTE_LIBRARY) {
-                        LibraryScreen(
-                            library = library,
-                            onOpenLiked = { navController.navigate(ROUTE_LIKED) },
-                            onOpenPlaylist = { id -> navController.navigate("playlist/$id") },
-                            onCreatePlaylist = { name -> libraryViewModel.createPlaylist(name) }
-                        )
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            LibraryScreen(
+                                library = library,
+                                onOpenLiked = { navController.navigate(ROUTE_LIKED) },
+                                onOpenPlaylist = { id -> navController.navigate("playlist/$id") },
+                                onCreatePlaylist = { name -> libraryViewModel.createPlaylist(name) }
+                            )
+                        }
                     }
 
                     composable(ROUTE_LIKED) {
-                        SongListScreen(
-                            title = "Lagu yang disukai",
-                            songs = library.liked,
-                            onBack = { navController.popBackStack() },
-                            onPlay = playerViewModel::playQueue,
-                            onRemove = { libraryViewModel.toggleLike(it) },
-                            removeIcon = AppIcons.HeartFilled,
-                            removeTint = HeartColor,
-                            removeDescription = "Hapus dari disukai"
-                        )
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            SongListScreen(
+                                title = "Lagu yang disukai",
+                                songs = library.liked,
+                                onBack = { navController.popBackStack() },
+                                onPlay = playerViewModel::playQueue,
+                                onRemove = { libraryViewModel.toggleLike(it) },
+                                removeIcon = AppIcons.HeartFilled,
+                                removeTint = HeartColor,
+                                removeDescription = "Hapus dari disukai"
+                            )
+                        }
                     }
 
                     composable(
@@ -159,17 +203,19 @@ fun AppRoot(
                         if (playlist == null) {
                             LaunchedEffect(Unit) { navController.popBackStack() }
                         } else {
-                            SongListScreen(
-                                title = playlist.name,
-                                songs = playlist.songs,
-                                onBack = { navController.popBackStack() },
-                                onPlay = playerViewModel::playQueue,
-                                onRemove = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
-                                removeIcon = AppIcons.Trash,
-                                removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                removeDescription = "Hapus dari playlist",
-                                onDeleteList = { libraryViewModel.deletePlaylist(playlist.id) }
-                            )
+                            Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                                SongListScreen(
+                                    title = playlist.name,
+                                    songs = playlist.songs,
+                                    onBack = { navController.popBackStack() },
+                                    onPlay = playerViewModel::playQueue,
+                                    onRemove = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
+                                    removeIcon = AppIcons.Trash,
+                                    removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    removeDescription = "Hapus dari playlist",
+                                    onDeleteList = { libraryViewModel.deletePlaylist(playlist.id) }
+                                )
+                            }
                         }
                     }
 
@@ -177,7 +223,10 @@ fun AppRoot(
                         NowPlayingScreen(
                             viewModel = playerViewModel,
                             libraryViewModel = libraryViewModel,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            modifier = Modifier
+                                .background(Sonora.Background)
+                                .navigationBarsPadding()
                         )
                     }
 
@@ -229,11 +278,14 @@ fun AppRoot(
             }
 
             // Bar mengambang (mini player + navbar), di atas halaman, bukan di dalam Scaffold
-            if (!onPlayerScreen) {
+            AnimatedVisibility(
+                visible = !onPlayerScreen,
+                modifier = Modifier.align(Alignment.BottomCenter),
+                enter = slideInVertically(tween(350, easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(300)),
+                exit = fadeOut(tween(150))
+            ) {
                 Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .onSizeChanged { barHeightPx = it.height }
+                    modifier = Modifier.onSizeChanged { barHeightPx = it.height }
                 ) {
                     MiniPlayer(
                         state = playerState,

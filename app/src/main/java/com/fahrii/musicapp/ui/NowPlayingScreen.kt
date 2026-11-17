@@ -1,6 +1,12 @@
 package com.fahrii.musicapp.ui
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -38,8 +44,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -104,22 +116,47 @@ fun NowPlayingScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
 
-        // Latar: cover diperbesar, diburamkan, memudar ke warna background
+        // Latar: cover diperbesar, diburamkan, dibuat lebih terang dan pekat warnanya,
+        // lalu memudar ke warna background di sekitar judul lagu.
+        val glowFilter = remember {
+            ColorFilter.colorMatrix(
+                ColorMatrix().apply {
+                    setToSaturation(1.6f)
+                    timesAssign(
+                        ColorMatrix(
+                            floatArrayOf(
+                                1.4f, 0f, 0f, 0f, 0f,
+                                0f, 1.4f, 0f, 0f, 0f,
+                                0f, 0f, 1.4f, 0f, 0f,
+                                0f, 0f, 0f, 1f, 0f
+                            )
+                        )
+                    )
+                }
+            )
+        }
         AsyncImage(
             model = song.thumbnailUrl,
             contentDescription = null,
             contentScale = ContentScale.Crop,
+            colorFilter = glowFilter,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(560.dp)
+                .height(640.dp)
                 .blur(60.dp)
-                .alpha(0.65f)
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(560.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Sonora.Background)))
+                .height(640.dp)
+                .background(
+                    Brush.verticalGradient(
+                        0f to Color.Transparent,
+                        0.5f to Sonora.Background.copy(alpha = 0.35f),
+                        0.85f to Sonora.Background,
+                        1f to Sonora.Background
+                    )
+                )
         )
 
         Column(
@@ -217,7 +254,7 @@ fun NowPlayingScreen(
                 Text(text = it, fontSize = 13.sp, color = Color(0xFFFF6B6B), textAlign = TextAlign.Center)
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
 
             LyricsView(lines = lyrics, positionMs = progress.positionMs)
 
@@ -350,22 +387,51 @@ fun NowPlayingScreen(
     }
 }
 
-/** Tiga baris lirik: sebelumnya (redup), sekarang (terang), berikutnya (redup). */
+/**
+ * Tiga baris lirik: sebelumnya (redup), sekarang (terang), berikutnya (redup).
+ * Saat baris berganti, ketiganya bergeser halus ke atas sambil fade.
+ */
 @Composable
 private fun LyricsView(lines: List<LyricLine>?, positionMs: Long, modifier: Modifier = Modifier) {
     Box(
-        modifier = modifier.fillMaxWidth().height(104.dp),
-        contentAlignment = Alignment.Center
+        modifier = modifier.fillMaxWidth().height(128.dp),
+        contentAlignment = Alignment.TopCenter
     ) {
         when {
             lines == null -> Text("Memuat lirik…", fontSize = 14.sp, color = Sonora.TextSecondary)
             lines.isEmpty() -> Text("Lirik tidak tersedia", fontSize = 14.sp, color = Sonora.TextSecondary)
             else -> {
                 val index = lines.indexOfLast { it.timeMs <= positionMs }
-                Crossfade(targetState = index, label = "lyrics") { i ->
+                AnimatedContent(
+                    targetState = index,
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.TopCenter,
+                    transitionSpec = {
+                        val up = targetState > initialState
+                        val dir = if (up) 1 else -1
+                        (slideInVertically(tween(400)) { dir * it / 3 } + fadeIn(tween(400))) togetherWith
+                                (slideOutVertically(tween(400)) { -dir * it / 3 } + fadeOut(tween(250)))
+                    },
+                    label = "lyrics"
+                ) { i ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                            .drawWithContent {
+                                drawContent()
+                                // Ujung atas (lirik sebelumnya) dan bawah (lirik berikutnya) memudar.
+                                drawRect(
+                                    brush = Brush.verticalGradient(
+                                        0f to Color.Transparent,
+                                        0.3f to Color.Black,
+                                        0.7f to Color.Black,
+                                        1f to Color.Transparent
+                                    ),
+                                    blendMode = BlendMode.DstIn
+                                )
+                            }
                     ) {
                         LyricText(lines.getOrNull(i - 1)?.text.orEmpty(), current = false)
                         LyricText(if (i >= 0) lines[i].text else "", current = true)
@@ -385,8 +451,6 @@ private fun LyricText(text: String, current: Boolean) {
         fontWeight = if (current) FontWeight.Medium else FontWeight.Normal,
         color = if (current) Color.White else Color.White.copy(alpha = 0.3f),
         textAlign = TextAlign.Center,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
     )
 }
