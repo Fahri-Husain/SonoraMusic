@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +49,8 @@ import androidx.compose.foundation.layout.PaddingValues
 fun SearchScreen(
     modifier: Modifier = Modifier,
     viewModel: SearchViewModel = viewModel(),
+    currentSongUrl: String? = null,
+    isPlaying: Boolean = false,
     onSongClick: (List<Song>, Int) -> Unit = { _, _ -> }
 ) {
     val state by viewModel.state.collectAsState()
@@ -116,6 +119,8 @@ fun SearchScreen(
                     ) { index, song ->
                         SongRow(
                             song = song,
+                            isCurrent = song.url == currentSongUrl,
+                            isPlaying = isPlaying,
                             onClick = {
                                 dismissKeyboard()
                                 onSongClick(state.results, index)
@@ -129,7 +134,7 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SongRow(song: Song, onClick: () -> Unit) {
+private fun SongRow(song: Song, isCurrent: Boolean, isPlaying: Boolean, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -137,17 +142,22 @@ private fun SongRow(song: Song, onClick: () -> Unit) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = song.thumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Crop
-        )
+        if (isCurrent && isPlaying) {
+            PlayingThumb(isPlaying = isPlaying, size = 56.dp)
+        } else {
+            AsyncImage(
+                model = song.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(6.dp)),
+                contentScale = ContentScale.Crop
+            )
+        }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = song.title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (isCurrent) FontWeight.Bold else null,
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)

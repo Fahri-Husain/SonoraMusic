@@ -8,6 +8,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -57,4 +62,32 @@ fun Modifier.glass(backdrop: GlassBackdrop, shape: Shape): Modifier = this
             end = Offset.Infinite
         ),
         shape = shape
+    )
+
+
+/**
+ * Blur untuk bar atas: tanpa border dan lensa. Pekat sampai [fadeHeight] terakhir, lalu memudar
+ * halus ke bawah, jadi tidak ada garis tepi keras di bawah bar.
+ */
+fun Modifier.glassFadeBar(backdrop: GlassBackdrop, fadeHeight: Dp = 20.dp): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.Black, Color.Transparent),
+                startY = (size.height - fadeHeight.toPx()).coerceAtLeast(0f),
+                endY = size.height
+            ),
+            blendMode = BlendMode.DstIn
+        )
+    }
+    .drawBackdrop(
+        backdrop = backdrop,
+        shape = { RectangleShape },
+        effects = {
+            vibrancy()
+            blur(14f.dp.toPx())
+        },
+        onDrawSurface = { drawRect(Color.Black.copy(alpha = 0.30f)) }
     )

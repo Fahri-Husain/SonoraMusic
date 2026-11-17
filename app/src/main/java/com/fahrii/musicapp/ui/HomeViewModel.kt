@@ -5,7 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.ChartRepository
-import com.fahrii.musicapp.data.MusicRepository
+import com.fahrii.musicapp.data.QuickPickRepository
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -82,19 +82,49 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         loadQuickPicks()
     }
 
-    // Satu per satu supaya nggak membanjiri YouTube dengan banyak request sekaligus
+    /**
+     * Pilihan Cepat diganti seminggu sekali dan disimpan di HP. Yang tersimpan ditampilkan dulu,
+     * lalu kartu yang sudah lewat seminggu (atau belum pernah ada) diambil ulang dari sumber tren.
+     */
     private fun loadQuickPicks() {
         if (quickPicksJob?.isActive == true) return
         quickPicksJob = viewModelScope.launch {
-            _state.value.quickPicks.forEachIndexed { index, pick ->
-                if (pick.songs.isNotEmpty()) return@forEachIndexed
-                val songs = runCatching { MusicRepository.search(pick.query) }
-                    .getOrDefault(emptyList())
+            val repo = QuickPickRepository.getInstance(getApplication<Application>())
+            val now = System.currentTimeMillis()
+
+            fun show(label: String, songs: List<Song>) {
                 _state.update { s ->
-                    s.copy(quickPicks = s.quickPicks.mapIndexed { i, p ->
-                        if (i == index) p.copy(songs = songs.take(20)) else p
+                    s.copy(quickPicks = s.quickPicks.map { p ->
+                        if (p.label == label) p.copy(songs = songs) else p
                     })
                 }
+            }
+
+            // Tampilkan dulu yang tersimpan, supaya kartu tidak kosong selama menunggu
+            _state.value.quickPicks.forEach { p ->
+                if (p.songs.isEmpty()) show(p.label, repo.songsOf(p.label))
+            }
+
+            val labels = _state.value.quickPicks.map { it.label }
+            val mix = QuickPickRepository.MIX_LABEL
+            // Mix paling akhir karena bahannya diambil dari kartu lain
+            for (label in labels.filter { it != mix } + labels.filter { it == mix }) {
+                if (repo.entry(label)?.isFresh(now) == true) continue
+
+                val songs = if (label == mix) {
+                    repo.buildMix(labels.filter { it != mix }.map { repo.songsOf(it) }, now)
+                } else {
+                    repo.fetchFresh(label, now)
+                }
+
+                if (songs.size < QuickPickRepository.MIN_SONGS) {
+                    // Terlalu sedikit (mungkin gagal sebagian): jangan menimpa yang lama dan jangan
+                    // disimpan sebagai pilihan minggu ini, supaya dicoba lagi lain kali
+                    if (repo.songsOf(label).isEmpty() && songs.isNotEmpty()) show(label, songs)
+                    continue
+                }
+                repo.save(label, songs, now)
+                show(label, songs)
             }
         }
     }

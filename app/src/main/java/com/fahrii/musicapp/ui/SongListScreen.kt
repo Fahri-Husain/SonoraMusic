@@ -33,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -50,6 +51,8 @@ fun SongListScreen(
     removeTint: Color,
     removeDescription: String,
     modifier: Modifier = Modifier,
+    currentSongUrl: String? = null,
+    isPlaying: Boolean = false,
     onDeleteList: (() -> Unit)? = null
 ) {
     var confirmDelete by remember { mutableStateOf(false) }
@@ -106,6 +109,7 @@ fun SongListScreen(
                     songs,
                     key = { index, song -> "$index-${song.url}" }
                 ) { index, song ->
+                    val isCurrent = song.url == currentSongUrl
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -113,17 +117,22 @@ fun SongListScreen(
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        AsyncImage(
-                            model = song.thumbnailUrl,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
-                            contentScale = ContentScale.Crop
-                        )
+                        if (isCurrent && isPlaying) {
+                            PlayingThumb(isPlaying = isPlaying, size = 48.dp)
+                        } else {
+                            AsyncImage(
+                                model = song.thumbnailUrl,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = song.title,
                                 style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (isCurrent) FontWeight.Bold else null,
                                 maxLines = 1,
                                 overflow = TextOverflow.Clip,
                                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)

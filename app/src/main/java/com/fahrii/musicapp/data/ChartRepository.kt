@@ -33,6 +33,24 @@ object ChartRepository {
         getData("$BASE/chart/0/tracks?limit=$limit").mapNotNull { it.toTrackSong() }
     }
 
+    /** Chart lagu per genre (Deezer memperbarui chart ini terus; 0 = semua genre). */
+    suspend fun genreTracks(genreId: Int, limit: Int = 50): List<Song> = withContext(Dispatchers.IO) {
+        getData("$BASE/chart/$genreId/tracks?limit=$limit").mapNotNull { it.toTrackSong() }
+    }
+
+    private var genreIds: Map<String, Int>? = null
+
+    /**
+     * ID genre Deezer dari namanya ("Pop", "Jazz", ...). Daftar genre diambil sekali lalu disimpan
+     * di memori; kalau gagal diambil, dipakai [fallback].
+     */
+    suspend fun genreId(name: String, fallback: Int): Int = withContext(Dispatchers.IO) {
+        val map = genreIds ?: runCatching {
+            getData("$BASE/genre").associate { it.optString("name").lowercase() to it.optInt("id") }
+        }.getOrNull()?.also { genreIds = it }
+        map?.get(name.lowercase()) ?: fallback
+    }
+
     suspend fun newReleases(limit: Int = 20, maxAgeDays: Long = 45): List<Song> =
         withContext(Dispatchers.IO) {
             val today = java.time.LocalDate.now()

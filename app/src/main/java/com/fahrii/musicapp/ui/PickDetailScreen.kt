@@ -1,8 +1,18 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
@@ -61,25 +71,32 @@ fun PickDetailScreen(
 ) {
     val songs = pick.songs
     val listState = rememberLazyListState()
-    // 0 saat hero masih terlihat, naik ke 1 begitu di-scroll; dipakai untuk memunculkan bar judul
-    val barAlpha by remember {
-        derivedStateOf {
-            if (listState.firstVisibleItemIndex > 0) 1f
-            else (listState.firstVisibleItemScrollOffset / 350f).coerceIn(0f, 1f)
-        }
+    // Backdrop lokal: hanya daftar/hero yang jadi sumber blur, bar kaca ada di luarnya
+    val backdrop = rememberGlassBackdrop()
+    var titleBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+    val statusBarBottom = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
+    // Bar baru muncul setelah nama di hero sudah mepet/lewat status bar (atau hero sudah lewat)
+    val titleCovered by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || titleBottom <= statusBarBottom }
     }
+    val barAlpha by animateFloatAsState(
+        targetValue = if (titleCovered) 1f else 0f,
+        animationSpec = tween(180),
+        label = "pickBar"
+    )
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = listState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().glassSource(backdrop),
             contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)
         ) {
             item {
                 PickHero(
                     pick = pick,
                     onPlayAll = { onPlay(songs, 0) },
-                    onShuffle = { onPlay(songs.shuffled(), 0) }
+                    onShuffle = { onPlay(songs.shuffled(), 0) },
+                    onTitleBottom = { titleBottom = it }
                 )
             }
 
@@ -108,48 +125,93 @@ fun PickDetailScreen(
             }
         }
 
-        // Bar atas: tombol kembali selalu ada; nama playlist ikut muncul saat daftar di-scroll
-        Row(
+        // Bar atas: kaca blur + panah kembali + nama playlist, muncul setelah nama di hero mepet status bar
+        Box(
             modifier = Modifier
+                .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .background(Sonora.Background.copy(alpha = barAlpha))
-                .statusBarsPadding()
-                .padding(start = 12.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
+                    .matchParentSize()
+                    .graphicsLayer { alpha = barAlpha }
+                    .glassFadeBar(backdrop)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 8.dp, end = 16.dp, bottom = 24.dp), // bawah lebih tinggi: blur sampai di bawah teks
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = AppIcons.BackArrow,
-                    contentDescription = "Kembali",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = titleCovered, onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.BackArrow,
+                        contentDescription = "Kembali",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp).alpha(barAlpha)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = pick.label,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier
+                        .weight(1f)
+                        .alpha(barAlpha)
+                        .basicMarquee(iterations = Int.MAX_VALUE)
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = pick.label,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier
-                    .weight(1f)
-                    .alpha(barAlpha)
-                    .basicMarquee(iterations = Int.MAX_VALUE)
+        }
+
+        // Tombol kembali di hero: bulatan kaca yang ikut bergeser naik bersama isi saat di-scroll
+        // (tidak menempel di layar). Setelah nama playlist tertutup, panahnya muncul lagi di bar atas.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 8.dp)
+                .graphicsLayer {
+                    val scrolled = if (listState.firstVisibleItemIndex == 0) {
+                        listState.firstVisibleItemScrollOffset.toFloat()
+                    } else {
+                        Float.MAX_VALUE
+                    }
+                    translationY = -scrolled.coerceAtMost(100_000f)
+                    alpha = if (listState.firstVisibleItemIndex == 0) 1f else 0f
+                }
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(modifier = Modifier.matchParentSize().glass(backdrop, CircleShape))
+            Icon(
+                imageVector = AppIcons.BackArrow,
+                contentDescription = "Kembali",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
             )
         }
     }
 }
 
 @Composable
-private fun PickHero(pick: QuickPick, onPlayAll: () -> Unit, onShuffle: () -> Unit) {
+private fun PickHero(
+    pick: QuickPick,
+    onPlayAll: () -> Unit,
+    onShuffle: () -> Unit,
+    onTitleBottom: (Float) -> Unit
+) {
     val songs = pick.songs
     val totalSeconds = songs.sumOf { it.durationSeconds.coerceAtLeast(0L) }
     val info = buildString {
@@ -188,7 +250,8 @@ private fun PickHero(pick: QuickPick, onPlayAll: () -> Unit, onShuffle: () -> Un
                 text = pick.label,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                modifier = Modifier.onGloballyPositioned { onTitleBottom(it.boundsInRoot().bottom) }
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -314,27 +377,22 @@ private fun TrackRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.CenterStart) {
-            if (isCurrent) {
-                Icon(
-                    imageVector = AppIcons.MusicNote,
-                    contentDescription = null,
-                    tint = if (isPlaying) Color.White else Sonora.TextSecondary,
-                    modifier = Modifier.size(18.dp)
-                )
-            } else {
-                Text("$number", fontSize = 14.sp, color = Sonora.TextSecondary)
-            }
+            Text("$number", fontSize = 14.sp, color = Sonora.TextSecondary)
         }
-        AsyncImage(
-            model = song.thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(thumbShape)
-                .background(Sonora.Surface)
-                .border(1.dp, Sonora.Border, thumbShape)
-        )
+        if (isCurrent && isPlaying) {
+            PlayingThumb(isPlaying = isPlaying, size = 52.dp)
+        } else {
+            AsyncImage(
+                model = song.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(thumbShape)
+                    .background(Sonora.Surface)
+                    .border(1.dp, Sonora.Border, thumbShape)
+            )
+        }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

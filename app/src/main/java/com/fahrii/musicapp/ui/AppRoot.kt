@@ -1,6 +1,7 @@
 package com.fahrii.musicapp.ui
 
 import android.R.attr.alpha
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -9,7 +10,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
@@ -37,6 +41,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -57,6 +62,16 @@ private const val ROUTE_PLAYLIST = "playlist/{id}"
 private const val ROUTE_PLAYER = "player"
 private const val ROUTE_PICK = "pick/{index}"
 
+/** Lama geser Beranda <-> Koleksi (ms). */
+private const val TAB_SLIDE_MS = 350
+
+/** +1: pindah ke tab di kanan (Beranda -> Koleksi), -1: ke tab di kiri (Koleksi -> Beranda), 0: bukan keduanya. */
+private fun tabSlideDirection(from: String?, to: String?): Int = when {
+    from == ROUTE_HOME && to == ROUTE_LIBRARY -> 1
+    from == ROUTE_LIBRARY && to == ROUTE_HOME -> -1
+    else -> 0
+}
+
 @Composable
 fun AppRoot(
     playerViewModel: PlayerViewModel,
@@ -71,6 +86,20 @@ fun AppRoot(
     val backStackEntry by navController.currentBackStackEntryAsState()
 
     val route = backStackEntry?.destination?.route
+
+    // Jejak rute [sebelumnya, sekarang], diisi listener navigasi sebelum recompose,
+    // supaya header beranda tahu harus geser atau tidak saat berpindah Beranda <-> Koleksi
+    val routeTrail = remember { arrayOfNulls<String>(2) }
+    DisposableEffect(navController) {
+        val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
+            if (destination.route != routeTrail[1]) {
+                routeTrail[0] = routeTrail[1]
+                routeTrail[1] = destination.route
+            }
+        }
+        navController.addOnDestinationChangedListener(listener)
+        onDispose { navController.removeOnDestinationChangedListener(listener) }
+    }
     val onPlayerScreen = route == ROUTE_PLAYER
     val currentTab = when (route) {
         ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST -> BottomTab.COLLECTION
@@ -116,33 +145,44 @@ fun AppRoot(
                         .glassSource(backdrop),
                     // Player naik dari bawah saat dibuka dan turun lagi saat kembali (hanya geser,
                     // tanpa fade, supaya ringan). Halaman di belakangnya diam.
+                    // Beranda <-> Koleksi: geser horizontal (Beranda di kiri, Koleksi di kanan).
                     enterTransition = {
-                        if (targetState.destination.route == ROUTE_PLAYER) {
-                            slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it }
-                        } else {
-                            fadeIn(tween(300))
+                        val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+                        when {
+                            targetState.destination.route == ROUTE_PLAYER ->
+                                slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it }
+                            dir > 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            dir < 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            else -> fadeIn(tween(300))
                         }
                     },
                     exitTransition = {
-                        if (targetState.destination.route == ROUTE_PLAYER) {
+                        val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+                        when {
                             // Halaman di belakang diam; player menutupinya sambil naik
-                            ExitTransition.None
-                        } else {
-                            fadeOut(tween(300))
+                            targetState.destination.route == ROUTE_PLAYER -> ExitTransition.None
+                            dir > 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            dir < 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            else -> fadeOut(tween(300))
                         }
                     },
                     popEnterTransition = {
-                        if (initialState.destination.route == ROUTE_PLAYER) {
-                            EnterTransition.None
-                        } else {
-                            fadeIn(tween(300))
+                        val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+                        when {
+                            initialState.destination.route == ROUTE_PLAYER -> EnterTransition.None
+                            dir > 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            dir < 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            else -> fadeIn(tween(300))
                         }
                     },
                     popExitTransition = {
-                        if (initialState.destination.route == ROUTE_PLAYER) {
-                            slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
-                        } else {
-                            fadeOut(tween(300))
+                        val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
+                        when {
+                            initialState.destination.route == ROUTE_PLAYER ->
+                                slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
+                            dir > 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            dir < 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
+                            else -> fadeOut(tween(300))
                         }
                     }
                 ) {
@@ -162,6 +202,8 @@ fun AppRoot(
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             SearchScreen(
                                 viewModel = searchViewModel,
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying,
                                 onSongClick = { songs, index ->
                                     val q = searchViewModel.state.value.query.trim()
                                     playerViewModel.playQueue(songs, index, if (q.isNotEmpty()) "Pencarian \"$q\"" else "Pencarian")
@@ -191,7 +233,9 @@ fun AppRoot(
                                 onRemove = { libraryViewModel.toggleLike(it) },
                                 removeIcon = AppIcons.HeartFilled,
                                 removeTint = HeartColor,
-                                removeDescription = "Hapus dari disukai"
+                                removeDescription = "Hapus dari disukai",
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying
                             )
                         }
                     }
@@ -216,6 +260,8 @@ fun AppRoot(
                                     removeIcon = AppIcons.Trash,
                                     removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     removeDescription = "Hapus dari playlist",
+                                    currentSongUrl = playerState.currentSong?.url,
+                                    isPlaying = playerState.isPlaying,
                                     onDeleteList = { libraryViewModel.deletePlaylist(playlist.id) }
                                 )
                             }
@@ -256,10 +302,19 @@ fun AppRoot(
                 }
             }
 
-            if (route == ROUTE_HOME) {
+            // Header ikut geser bersama halaman saat Beranda <-> Koleksi; selain itu muncul/hilang seperti biasa
+            AnimatedVisibility(
+                visible = route == ROUTE_HOME,
+                modifier = Modifier.align(Alignment.TopCenter),
+                enter = if (routeTrail[0] == ROUTE_LIBRARY) {
+                    slideInHorizontally(tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing)) { -it }
+                } else EnterTransition.None,
+                exit = if (routeTrail[1] == ROUTE_LIBRARY) {
+                    slideOutHorizontally(tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing)) { -it }
+                } else ExitTransition.None
+            ) {
                 Box(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
                         .onSizeChanged { headerHeightPx = it.height }
                 ) {
