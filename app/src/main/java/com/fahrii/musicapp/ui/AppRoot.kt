@@ -149,7 +149,7 @@ fun AppRoot(
                     composable(ROUTE_HOME) {
                         HomeScreen(
                             viewModel = homeViewModel,
-                            onPlay = playerViewModel::playQueue,
+                            onPlay = { songs, index, source -> playerViewModel.playQueue(songs, index, source) },
                             onGenreClick = ::openSearch,
                             onArtistClick = ::openSearch,
                             listState = homeListState,
@@ -162,7 +162,10 @@ fun AppRoot(
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             SearchScreen(
                                 viewModel = searchViewModel,
-                                onSongClick = { songs, index -> playerViewModel.playQueue(songs, index) }
+                                onSongClick = { songs, index ->
+                                    val q = searchViewModel.state.value.query.trim()
+                                    playerViewModel.playQueue(songs, index, if (q.isNotEmpty()) "Pencarian \"$q\"" else "Pencarian")
+                                }
                             )
                         }
                     }
@@ -184,7 +187,7 @@ fun AppRoot(
                                 title = "Lagu yang disukai",
                                 songs = library.liked,
                                 onBack = { navController.popBackStack() },
-                                onPlay = playerViewModel::playQueue,
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Lagu yang disukai") },
                                 onRemove = { libraryViewModel.toggleLike(it) },
                                 removeIcon = AppIcons.HeartFilled,
                                 removeTint = HeartColor,
@@ -208,7 +211,7 @@ fun AppRoot(
                                     title = playlist.name,
                                     songs = playlist.songs,
                                     onBack = { navController.popBackStack() },
-                                    onPlay = playerViewModel::playQueue,
+                                    onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"") },
                                     onRemove = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
                                     removeIcon = AppIcons.Trash,
                                     removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -246,7 +249,7 @@ fun AppRoot(
                                 currentSongUrl = playerState.currentSong?.url,
                                 isPlaying = playerState.isPlaying,
                                 onBack = { navController.popBackStack() },
-                                onPlay = playerViewModel::playQueue
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Pilihan Cepat \"${pick.label}\"") }
                             )
                         }
                     }

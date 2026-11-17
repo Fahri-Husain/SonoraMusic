@@ -29,7 +29,9 @@ data class PlayerUiState(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val hasNext: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    /** Dari mana lagu diputar, mis. Playlist "my gweh". */
+    val sourceLabel: String? = null
 )
 
 data class PlaybackProgress(
@@ -103,13 +105,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Putar [songs] sebagai antrian, mulai dari lagu ke-[startIndex]. */
-    fun playQueue(songs: List<Song>, startIndex: Int) {
+    fun playQueue(songs: List<Song>, startIndex: Int, source: String? = null) {
         if (songs.isEmpty()) return
         val index = startIndex.coerceIn(0, songs.lastIndex)
         val items = songs.map { it.toMediaItem() }
 
         _state.update {
-            it.copy(currentSong = songs[index], isBuffering = true, error = null)
+            it.copy(currentSong = songs[index], isBuffering = true, error = null, sourceLabel = source)
         }
 
         val c = controller

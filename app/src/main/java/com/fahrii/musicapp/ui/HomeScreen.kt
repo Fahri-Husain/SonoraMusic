@@ -1,5 +1,6 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -95,7 +96,7 @@ private fun currentHour(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onPlay: (List<Song>, Int) -> Unit,
+    onPlay: (List<Song>, Int, String) -> Unit,
     onGenreClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
     onPickClick: (Int) -> Unit,
@@ -112,79 +113,79 @@ fun HomeScreen(
         contentPadding = PaddingValues(top = topInset + 12.dp, bottom = 24.dp + LocalBottomInset.current),
         verticalArrangement = Arrangement.spacedBy(28.dp)
     ) {
-            if (state.error != null) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = state.error ?: "",
-                            fontSize = 13.sp,
-                            color = Sonora.TextSecondary,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
-                    }
-                }
-            }
-
+        if (state.error != null) {
             item {
-                Column {
-                    SectionTitle("Pilihan Cepat")
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 20.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
-                            QuickPickCard(
-                                pick = pick,
-                                onOpen = { onPickClick(index) },
-                                onPlay = { onPlay(pick.songs, 0) },
-                                modifier = Modifier.fillParentMaxWidth(0.86f)
-                            )
-                        }
-                    }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = state.error ?: "",
+                        fontSize = 13.sp,
+                        color = Sonora.TextSecondary,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
                 }
             }
+        }
 
-            if (state.isLoading || state.newReleases.isNotEmpty()) {
-                item {
-                    Column {
-                        SectionTitle("Rilis Baru", action = "Lainnya")
-                        SongCardRow(state.newReleases, onPlay)
-                    }
-                }
-            }
-
-            item {
-                Column {
-                    SectionTitle("Lagu Trending")
-                    SongCardRow(state.trending, onPlay)
-                }
-            }
-
-            item {
-                Column {
-                    SectionTitle("Genre")
-                    GenreGrid(onGenreClick)
-                }
-            }
-
-            item {
-                Column {
-                    SectionTitle("Artis Pilihan")
-                    artists.forEachIndexed { index, artist ->
-                        ArtistRow(
-                            rank = index + 1,
-                            artist = artist,
-                            onClick = { onArtistClick(artist.name) }
+        item {
+            Column {
+                SectionTitle("Pilihan Cepat")
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 20.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
+                        QuickPickCard(
+                            pick = pick,
+                            onOpen = { onPickClick(index) },
+                            onPlay = { onPlay(pick.songs, 0, "Pilihan Cepat \"${pick.label}\"") },
+                            modifier = Modifier.fillParentMaxWidth(0.86f)
                         )
                     }
                 }
             }
         }
+
+        if (state.isLoading || state.newReleases.isNotEmpty()) {
+            item {
+                Column {
+                    SectionTitle("Rilis Baru", action = "Lainnya")
+                    SongCardRow(state.newReleases, "Rilis Baru", onPlay)
+                }
+            }
+        }
+
+        item {
+            Column {
+                SectionTitle("Lagu Trending")
+                SongCardRow(state.trending, "Lagu Trending", onPlay)
+            }
+        }
+
+        item {
+            Column {
+                SectionTitle("Genre")
+                GenreGrid(onGenreClick)
+            }
+        }
+
+        item {
+            Column {
+                SectionTitle("Artis Pilihan")
+                artists.forEachIndexed { index, artist ->
+                    ArtistRow(
+                        rank = index + 1,
+                        artist = artist,
+                        onClick = { onArtistClick(artist.name) }
+                    )
+                }
+            }
+        }
     }
+}
 
 
 @Composable
@@ -368,7 +369,7 @@ private class NotchedCardShape(
 // ---------- Rilis Baru & Lagu Trending (komponen sama) ----------
 
 @Composable
-private fun SongCardRow(songs: List<Song>, onPlay: (List<Song>, Int) -> Unit) {
+private fun SongCardRow(songs: List<Song>, source: String, onPlay: (List<Song>, Int, String) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -385,7 +386,7 @@ private fun SongCardRow(songs: List<Song>, onPlay: (List<Song>, Int) -> Unit) {
             }
         } else {
             itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
-                SongCard(song = song, onClick = { onPlay(songs, index) })
+                SongCard(song = song, onClick = { onPlay(songs, index, source) })
             }
         }
     }
@@ -412,7 +413,8 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
         )
         Text(
             text = song.title,
@@ -420,7 +422,8 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
             fontWeight = FontWeight.SemiBold,
             color = Sonora.TextSecondary,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
         )
     }
 }
@@ -504,7 +507,8 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
     }

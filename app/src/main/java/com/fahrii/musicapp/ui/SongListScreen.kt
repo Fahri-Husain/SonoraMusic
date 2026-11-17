@@ -1,5 +1,6 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -124,14 +125,16 @@ fun SongListScreen(
                                 text = song.title,
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                             )
                             Text(
                                 text = song.artist,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                             )
                         }
                         IconButton(onClick = { onRemove(song) }) {

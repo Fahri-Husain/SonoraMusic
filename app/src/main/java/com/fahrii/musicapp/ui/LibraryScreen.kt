@@ -1,5 +1,6 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -157,7 +158,8 @@ private fun LibraryRow(
                 text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
             Text(
                 text = subtitle,

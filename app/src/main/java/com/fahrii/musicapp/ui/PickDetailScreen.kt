@@ -1,5 +1,10 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,9 +60,18 @@ fun PickDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val songs = pick.songs
+    val listState = rememberLazyListState()
+    // 0 saat hero masih terlihat, naik ke 1 begitu di-scroll; dipakai untuk memunculkan bar judul
+    val barAlpha by remember {
+        derivedStateOf {
+            if (listState.firstVisibleItemIndex > 0) 1f
+            else (listState.firstVisibleItemScrollOffset / 350f).coerceIn(0f, 1f)
+        }
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)
         ) {
@@ -94,22 +108,41 @@ fun PickDetailScreen(
             }
         }
 
-        // Tombol kembali melayang di atas hero
-        Box(
+        // Bar atas: tombol kembali selalu ada; nama playlist ikut muncul saat daftar di-scroll
+        Row(
             modifier = Modifier
+                .fillMaxWidth()
+                .background(Sonora.Background.copy(alpha = barAlpha))
                 .statusBarsPadding()
-                .padding(start = 12.dp, top = 8.dp)
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.35f))
-                .clickable(onClick = onBack),
-            contentAlignment = Alignment.Center
+                .padding(start = 12.dp, top = 8.dp, end = 16.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = AppIcons.BackArrow,
-                contentDescription = "Kembali",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable(onClick = onBack),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.BackArrow,
+                    contentDescription = "Kembali",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = pick.label,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier
+                    .weight(1f)
+                    .alpha(barAlpha)
+                    .basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
     }
@@ -309,14 +342,16 @@ private fun TrackRow(
                 fontSize = 15.sp,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
             Text(
                 text = song.artist,
                 fontSize = 13.sp,
                 color = Sonora.TextSecondary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
         if (song.durationSeconds > 0) {

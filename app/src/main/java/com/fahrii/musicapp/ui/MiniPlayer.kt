@@ -1,5 +1,6 @@
 package com.fahrii.musicapp.ui
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -68,14 +69,16 @@ fun MiniPlayer(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
             Text(
                 text = subtitle ?: "",
                 style = MaterialTheme.typography.bodySmall,
                 color = subtitleColor,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
         if (state.isBuffering) {
