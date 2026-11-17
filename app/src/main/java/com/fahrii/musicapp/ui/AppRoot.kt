@@ -52,6 +52,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.padding
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 
 private const val ROUTE_HOME = "home"
@@ -61,6 +63,8 @@ private const val ROUTE_LIKED = "liked"
 private const val ROUTE_PLAYLIST = "playlist/{id}"
 private const val ROUTE_PLAYER = "player"
 private const val ROUTE_PICK = "pick/{index}"
+private const val ROUTE_REPLAY = "replay"
+private const val ROUTE_MOST_PLAYED = "most_played"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
 private const val TAB_SLIDE_MS = 350
@@ -83,6 +87,8 @@ fun AppRoot(
 
     val playerState by playerViewModel.state.collectAsState()
     val library by libraryViewModel.state.collectAsState()
+    val playHistory by libraryViewModel.playHistory.collectAsState()
+    val context = LocalContext.current
     val backStackEntry by navController.currentBackStackEntryAsState()
 
     val route = backStackEntry?.destination?.route
@@ -102,7 +108,7 @@ fun AppRoot(
     }
     val onPlayerScreen = route == ROUTE_PLAYER
     val currentTab = when (route) {
-        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST -> BottomTab.COLLECTION
+        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED -> BottomTab.COLLECTION
         ROUTE_SEARCH -> BottomTab.SEARCH
         else -> BottomTab.HOME
     }
@@ -216,9 +222,51 @@ fun AppRoot(
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             LibraryScreen(
                                 library = library,
-                                onOpenLiked = { navController.navigate(ROUTE_LIKED) },
+                                history = playHistory,
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying,
+                                onOpenFavorites = { navController.navigate(ROUTE_LIKED) },
+                                onOpenReplay = { navController.navigate(ROUTE_REPLAY) },
+                                onOpenMostPlayed = { navController.navigate(ROUTE_MOST_PLAYED) },
+                                onOpenDownloads = {
+                                    Toast.makeText(context, "Fitur unduhan belum tersedia", Toast.LENGTH_SHORT).show()
+                                },
                                 onOpenPlaylist = { id -> navController.navigate("playlist/$id") },
-                                onCreatePlaylist = { name -> libraryViewModel.createPlaylist(name) }
+                                onCreatePlaylist = { name -> libraryViewModel.createPlaylist(name) },
+                                onPlayHistory = { songs, index -> playerViewModel.playQueue(songs, index, "Riwayat") },
+                                onRemoveHistory = { libraryViewModel.removeFromHistory(it.url) }
+                            )
+                        }
+                    }
+
+                    composable(ROUTE_REPLAY) {
+                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat statistik berubah
+                        val replayStats by libraryViewModel.replayStats.collectAsState()
+                        val artistImages by libraryViewModel.artistImages.collectAsState()
+                        Box(Modifier.fillMaxSize()) {
+                            ReplayScreen(
+                                stats = replayStats,
+                                artistImages = artistImages,
+                                onRequestArtistImage = libraryViewModel::requestArtistImage,
+                                onBack = { navController.popBackStack() },
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Replay") }
+                            )
+                        }
+                    }
+
+                    composable(ROUTE_MOST_PLAYED) {
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            SongListScreen(
+                                title = "Paling Sering Diputar",
+                                songs = playHistory.sortedByDescending { it.plays }.map { it.song },
+                                onBack = { navController.popBackStack() },
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Paling Sering Diputar") },
+                                onRemove = { libraryViewModel.removeFromHistory(it.url) },
+                                removeIcon = AppIcons.Trash,
+                                removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                removeDescription = "Hapus dari riwayat",
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying
                             )
                         }
                     }

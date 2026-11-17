@@ -4,6 +4,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.channel.ChannelInfoItem
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
@@ -63,6 +64,26 @@ object MusicRepository {
                     durationSeconds = item.duration
                 )
             }
+    }
+
+    /**
+     * Cari foto profil artis di YouTube Music (fallback: pencarian channel biasa).
+     * Mengembalikan null kalau tidak ketemu.
+     */
+    suspend fun findArtistImage(name: String): String? = withContext(Dispatchers.IO) {
+        ensureInit()
+
+        fun pick(filter: String): String? {
+            val extractor = ServiceList.YouTube.getSearchExtractor(name, listOf(filter), "")
+            extractor.fetchPage()
+            val channels = extractor.initialPage.items.filterIsInstance<ChannelInfoItem>()
+            val best = channels.firstOrNull { it.name.equals(name, ignoreCase = true) }
+                ?: channels.firstOrNull()
+            return hdThumbnail(best?.thumbnails?.lastOrNull()?.url)
+        }
+
+        runCatching { pick(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS) }.getOrNull()
+            ?: runCatching { pick(YoutubeSearchQueryHandlerFactory.CHANNELS) }.getOrNull()
     }
 
     /**

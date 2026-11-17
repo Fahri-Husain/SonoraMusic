@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.fahrii.musicapp.data.HistoryRepository
+import com.fahrii.musicapp.data.ReplayRepository
 
 data class PlayerUiState(
     val currentSong: Song? = null,
@@ -57,15 +58,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
         // Catat artis tiap lagu baru mulai diputar (untuk "Artis Pilihan")
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (!isPlaying) return
+            if (!isPlaying) {
+                replay.flush()
+                return
+            }
             val item = controller?.currentMediaItem ?: return
             if (item.mediaId == lastRecordedId) return
             lastRecordedId = item.mediaId
             history.record(item.toSong())
+            replay.recordPlay(item.toSong())
         }
     }
 
     private val history = HistoryRepository.getInstance(app)
+    private val replay = ReplayRepository.getInstance(app)
     private var lastRecordedId: String? = null
 
     private val controllerFuture = MediaController.Builder(
@@ -98,6 +104,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                     _progress.update {
                         PlaybackProgress(c.currentPosition, c.duration.coerceAtLeast(0L))
                     }
+                    // Waktu dengar untuk Replay
+                    c.currentMediaItem?.let { replay.addListening(it.toSong(), 500L) }
                 }
                 delay(500)
             }
@@ -109,6 +117,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (songs.isEmpty()) return
         val index = startIndex.coerceIn(0, songs.lastIndex)
         val items = songs.map { it.toMediaItem() }
+
+        // Lagu yang ditekan langsung masuk riwayat; listener di bawah tidak mencatatnya lagi
+        lastRecordedId = songs[index].url
+        history.record(songs[index])
+        replay.recordPlay(songs[index])
 
         _state.update {
             it.copy(currentSong = songs[index], isBuffering = true, error = null, sourceLabel = source)
@@ -205,6 +218,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     override fun onCleared() {
+        replay.flush()
         controller?.removeListener(playerListener)
         MediaController.releaseFuture(controllerFuture)
     }

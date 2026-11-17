@@ -6,6 +6,10 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.bold.ArrowCircleDown
+import com.adamglin.phosphoricons.bold.ArrowCounterClockwise
+import com.adamglin.phosphoricons.bold.DotsThreeVertical
+import com.adamglin.phosphoricons.bold.TrendUp
 import com.adamglin.phosphoricons.bold.CaretDown
 import com.adamglin.phosphoricons.bold.CaretLeft
 import com.adamglin.phosphoricons.bold.CaretRight
@@ -59,4 +63,9 @@ object AppIcons {
     val History: ImageVector = PhosphorIcons.Bold.ClockCounterClockwise
     val SkipPrevious: ImageVector = PhosphorIcons.Fill.SkipBack
     val SkipNext: ImageVector = PhosphorIcons.Fill.SkipForward
+
+    val Replay: ImageVector = PhosphorIcons.Bold.ArrowCounterClockwise
+    val Trending: ImageVector = PhosphorIcons.Bold.TrendUp
+    val Download: ImageVector = PhosphorIcons.Bold.ArrowCircleDown
+    val MoreVert: ImageVector = PhosphorIcons.Bold.DotsThreeVertical
 }
