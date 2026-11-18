@@ -67,6 +67,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.res.painterResource
+import com.fahrii.musicapp.R
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -82,6 +84,9 @@ import kotlinx.coroutines.delay
 import java.util.Calendar
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.ui.unit.Dp
+
+/** Jumlah lagu yang tampil di baris beranda; sisanya ada di halaman daftar lengkap. */
+private const val HOME_ROW_LIMIT = 10
 
 private data class Genre(val name: String, val query: String, val accent: Color)
 
@@ -117,6 +122,8 @@ fun HomeScreen(
     onGenreClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
     onPickClick: (Int) -> Unit,
+    onSeeAllNewReleases: () -> Unit,
+    onSeeAllTrending: () -> Unit,
     listState: LazyListState,
     topInset: Dp,
     modifier: Modifier = Modifier
@@ -176,16 +183,16 @@ fun HomeScreen(
             if (state.isLoading || state.newReleases.isNotEmpty()) {
                 item {
                     Column {
-                        SectionTitle("Rilis Baru", action = "Lainnya")
-                        SongCardRow(state.newReleases, "Rilis Baru", onPlay)
+                        SectionTitle("Rilis Baru", onSeeAll = onSeeAllNewReleases)
+                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", onPlay)
                     }
                 }
             }
 
             item {
                 Column {
-                    SectionTitle("Lagu Trending")
-                    SongCardRow(state.trending, "Lagu Trending", onPlay)
+                    SectionTitle("Lagu Trending", onSeeAll = onSeeAllTrending)
+                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", onPlay)
                 }
             }
 
@@ -303,10 +310,11 @@ fun HomeHeader(
     }
 }
 
+/** Judul bagian; [onSeeAll] menampilkan panah kanan di ujung (sama seperti di Replay) untuk membuka daftar lengkapnya. */
 @Composable
-private fun SectionTitle(title: String, action: String? = null) {
+private fun SectionTitle(title: String, onSeeAll: (() -> Unit)? = null) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -315,13 +323,21 @@ private fun SectionTitle(title: String, action: String? = null) {
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f)
         )
-        if (action != null) {
-            Text(
-                text = action,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Sonora.TextSecondary
-            )
+        if (onSeeAll != null) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onSeeAll),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_right_arrow),
+                    contentDescription = "Lihat semua",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }

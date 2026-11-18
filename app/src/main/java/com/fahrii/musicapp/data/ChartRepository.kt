@@ -29,7 +29,7 @@ object ChartRepository {
     fun searchUrl(title: String, artist: String): String =
         "sonora://search?q=" + Uri.encode("$title $artist".trim())
 
-    suspend fun trendingTracks(limit: Int = 20): List<Song> = withContext(Dispatchers.IO) {
+    suspend fun trendingTracks(limit: Int = 50): List<Song> = withContext(Dispatchers.IO) {
         getData("$BASE/chart/0/tracks?limit=$limit").mapNotNull { it.toTrackSong() }
     }
 
@@ -51,7 +51,7 @@ object ChartRepository {
         map?.get(name.lowercase()) ?: fallback
     }
 
-    suspend fun newReleases(limit: Int = 20, maxAgeDays: Long = 45): List<Song> =
+    suspend fun newReleases(limit: Int = 50, maxAgeDays: Long = 45): List<Song> =
         withContext(Dispatchers.IO) {
             val today = java.time.LocalDate.now()
             val from = today.minusDays(maxAgeDays).toString()   // format yyyy-MM-dd

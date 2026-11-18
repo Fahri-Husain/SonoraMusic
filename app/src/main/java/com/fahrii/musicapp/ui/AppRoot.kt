@@ -70,6 +70,8 @@ private const val ROUTE_REPLAY = "replay"
 private const val ROUTE_ARTIST = "artist/{name}"
 private const val ROUTE_ALBUM = "album?title={title}&artist={artist}&url={url}&cover={cover}"
 private const val ROUTE_MOST_PLAYED = "most_played"
+private const val ROUTE_NEW_RELEASES = "new_releases"
+private const val ROUTE_TRENDING = "trending"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
 internal const val TAB_SLIDE_MS = 350
@@ -218,6 +220,8 @@ fun AppRoot(
                             onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                             listState = homeListState,
                             onPickClick = { navController.navigate("pick/$it") },
+                            onSeeAllNewReleases = { navController.navigate(ROUTE_NEW_RELEASES) },
+                            onSeeAllTrending = { navController.navigate(ROUTE_TRENDING) },
                             topInset = with(density) { headerHeightPx.toDp() }
                         )
                     }
@@ -325,6 +329,40 @@ fun AppRoot(
                             onPlay = { songs, index ->
                                 playerViewModel.playQueue(songs, index, "Album \"${albumState.title}\"")
                             }
+                        )
+                    }
+
+                    composable(ROUTE_NEW_RELEASES) {
+                        val homeState by homeViewModel.state.collectAsState()
+                        // Tampilan sama dengan detail Pilihan Cepat (cover mosaik, Putar/Acak, daftar bernomor)
+                        PickDetailScreen(
+                            pick = QuickPick(
+                                label = "Rilis Baru",
+                                subtitle = "Rilis terbaru pilihan",
+                                query = "",
+                                songs = homeState.newReleases
+                            ),
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Rilis Baru") }
+                        )
+                    }
+
+                    composable(ROUTE_TRENDING) {
+                        val homeState by homeViewModel.state.collectAsState()
+                        // Tampilan sama dengan detail Pilihan Cepat (cover mosaik, Putar/Acak, daftar bernomor)
+                        PickDetailScreen(
+                            pick = QuickPick(
+                                label = "Lagu Trending",
+                                subtitle = "Top chart saat ini",
+                                query = "",
+                                songs = homeState.trending
+                            ),
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Lagu Trending") }
                         )
                     }
 
