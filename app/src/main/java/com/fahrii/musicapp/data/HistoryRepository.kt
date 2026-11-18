@@ -51,20 +51,26 @@ class HistoryRepository private constructor(context: Context) {
 
     private fun recordSong(song: Song) {
         val now = System.currentTimeMillis()
+        val key = songKey(song)
         _songs.update { list ->
-            val existing = list.firstOrNull { it.song.url == song.url }
+            // Lagu yang sama dikenali dari judul + artis, bukan URL: URL-nya beda tergantung
+            // sumbernya (Pilihan Cepat, album, atau pencarian), padahal lagunya satu.
+            val existing = list.firstOrNull { songKey(it.song) == key }
             val entry = PlayedSong(
                 song = song,
                 plays = (existing?.plays ?: 0) + 1,
                 lastPlayedAt = now
             )
-            (listOf(entry) + list.filterNot { it.song.url == song.url }).take(MAX_SONGS)
+            (listOf(entry) + list.filterNot { songKey(it.song) == key }).take(MAX_SONGS)
         }
         persistSongs()
     }
 
     fun removeSong(url: String) {
-        _songs.update { list -> list.filterNot { it.song.url == url } }
+        _songs.update { list ->
+            val key = list.firstOrNull { it.song.url == url }?.let { songKey(it.song) }
+            list.filterNot { it.song.url == url || (key != null && songKey(it.song) == key) }
+        }
         persistSongs()
     }
 
@@ -111,7 +117,7 @@ class HistoryRepository private constructor(context: Context) {
 
     private fun loadSongs(): List<PlayedSong> = try {
         val arr = JSONArray(songFile.readText())
-        List(arr.length()) { i ->
+        val loaded = List(arr.length()) { i ->
             val o = arr.getJSONObject(i)
             PlayedSong(
                 song = Song(
@@ -125,9 +131,20 @@ class HistoryRepository private constructor(context: Context) {
                 lastPlayedAt = o.optLong("lastPlayedAt", 0L)
             )
         }.sortedByDescending { it.lastPlayedAt }
+        mergeDuplicates(loaded)
     } catch (e: Exception) {
         emptyList()
     }
+
+    /**
+     * Gabungkan entri ganda yang sudah tersimpan sebelum perbaikan ini: pemutaran dijumlahkan,
+     * dan lagu yang dipakai adalah yang paling baru diputar. [list] sudah urut terbaru dulu.
+     */
+    private fun mergeDuplicates(list: List<PlayedSong>): List<PlayedSong> =
+        list.groupBy { songKey(it.song) }
+            .values
+            .map { group -> group.first().copy(plays = group.sumOf { it.plays }) }
+            .sortedByDescending { it.lastPlayedAt }
 
     private fun persist() {
         scope.launch {
@@ -163,6 +180,16 @@ class HistoryRepository private constructor(context: Context) {
 
     companion object {
         private const val MAX_SONGS = 200
+
+        private val NON_ALNUM = Regex("[^\\p{L}\\p{N}]+")
+
+        /** Kunci identitas lagu: judul + artis, tanpa beda huruf besar/kecil, tanda baca, atau " - Topic". */
+        private fun songKey(song: Song): String {
+            fun norm(s: String) = s.lowercase()
+                .removeSuffix("- topic")
+                .replace(NON_ALNUM, "")
+            return norm(song.title) + "|" + norm(song.artist)
+        }
 
         @Volatile
         private var instance: HistoryRepository? = null
