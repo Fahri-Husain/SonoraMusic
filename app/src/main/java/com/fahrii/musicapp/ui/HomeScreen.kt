@@ -33,6 +33,23 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.runtime.State
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.lerp
+import kotlin.math.floor
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -106,85 +123,151 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val artists by viewModel.artists.collectAsState()
+    val subscribers by viewModel.subscribers.collectAsState()
+    val glowPosition = rememberGlowPosition()
 
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = topInset + 12.dp, bottom = 24.dp + LocalBottomInset.current),
-        verticalArrangement = Arrangement.spacedBy(28.dp)
-    ) {
-        if (state.error != null) {
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = state.error ?: "",
-                        fontSize = 13.sp,
-                        color = Sonora.TextSecondary,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
+    Box(modifier = modifier.fillMaxSize()) {
+        // Cahaya gradasi di atas beranda: warnanya berganti pelan dan mulus, tidak ikut ter-scroll
+        HomeGlow(position = glowPosition)
+
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = topInset + 12.dp, bottom = 24.dp + LocalBottomInset.current),
+            verticalArrangement = Arrangement.spacedBy(28.dp)
+        ) {
+            if (state.error != null) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = state.error ?: "",
+                            fontSize = 13.sp,
+                            color = Sonora.TextSecondary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
+                    }
                 }
             }
-        }
 
-        item {
-            Column {
-                SectionTitle("Pilihan Cepat")
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
-                        QuickPickCard(
-                            pick = pick,
-                            onOpen = { onPickClick(index) },
-                            onPlay = { onPlay(pick.songs, 0, "Pilihan Cepat \"${pick.label}\"") },
-                            modifier = Modifier.fillParentMaxWidth(0.86f)
+            item {
+                Column {
+                    SectionTitle("Pilihan Cepat")
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
+                            QuickPickCard(
+                                pick = pick,
+                                glowPosition = glowPosition,
+                                onOpen = { onPickClick(index) },
+                                onPlay = { onPlay(pick.songs, 0, "Pilihan Cepat \"${pick.label}\"") },
+                                modifier = Modifier.fillParentMaxWidth(0.86f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (state.isLoading || state.newReleases.isNotEmpty()) {
+                item {
+                    Column {
+                        SectionTitle("Rilis Baru", action = "Lainnya")
+                        SongCardRow(state.newReleases, "Rilis Baru", onPlay)
+                    }
+                }
+            }
+
+            item {
+                Column {
+                    SectionTitle("Lagu Trending")
+                    SongCardRow(state.trending, "Lagu Trending", onPlay)
+                }
+            }
+
+            item {
+                Column {
+                    SectionTitle("Genre")
+                    GenreGrid(onGenreClick)
+                }
+            }
+
+            item {
+                Column {
+                    SectionTitle("Artis Pilihan")
+                    artists.forEachIndexed { index, artist ->
+                        ArtistRow(
+                            rank = index + 1,
+                            artist = artist,
+                            subscribers = subscribers[artist.name],
+                            onClick = { onArtistClick(artist.name) }
                         )
                     }
                 }
             }
         }
-
-        if (state.isLoading || state.newReleases.isNotEmpty()) {
-            item {
-                Column {
-                    SectionTitle("Rilis Baru", action = "Lainnya")
-                    SongCardRow(state.newReleases, "Rilis Baru", onPlay)
-                }
-            }
-        }
-
-        item {
-            Column {
-                SectionTitle("Lagu Trending")
-                SongCardRow(state.trending, "Lagu Trending", onPlay)
-            }
-        }
-
-        item {
-            Column {
-                SectionTitle("Genre")
-                GenreGrid(onGenreClick)
-            }
-        }
-
-        item {
-            Column {
-                SectionTitle("Artis Pilihan")
-                artists.forEachIndexed { index, artist ->
-                    ArtistRow(
-                        rank = index + 1,
-                        artist = artist,
-                        onClick = { onArtistClick(artist.name) }
-                    )
-                }
-            }
-        }
     }
+}
+
+private val HomeGlowPalette = listOf(
+    Color(0xFFFF9F0A), // oranye
+    Color(0xFFE5173F), // merah
+    Color(0xFFB5179E), // magenta
+    Color(0xFF5E5CE6), // indigo
+    Color(0xFF0A84FF), // biru
+    Color(0xFF1FC8B4)  // tosca
+)
+
+private const val GLOW_STEP_MS = 5000
+
+private fun glowColor(position: Float): Color {
+    val n = HomeGlowPalette.size
+    val base = floor(position).toInt()
+    val fraction = position - floor(position)
+    return lerp(HomeGlowPalette[base % n], HomeGlowPalette[(base + 1) % n], fraction)
+}
+
+/** Posisi warna di palet (0..jumlah warna), berputar terus. Dibagi ke gradasi atas dan garis kartu. */
+@Composable
+private fun rememberGlowPosition(): State<Float> {
+    val transition = rememberInfiniteTransition(label = "homeGlow")
+    return transition.animateFloat(
+        initialValue = 0f,
+        targetValue = HomeGlowPalette.size.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(HomeGlowPalette.size * GLOW_STEP_MS, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "homeGlowPosition"
+    )
+}
+
+/** Gradasi hangat seperti di Replay, tapi pelan-pelan berganti warna mengitari palet. */
+@Composable
+private fun HomeGlow(position: State<Float>, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(380.dp)
+            .drawBehind {
+                // Dibaca di dalam draw: hanya menggambar ulang, tanpa recomposition tiap frame
+                val top = glowColor(position.value)
+                val middle = glowColor(position.value + 1f)
+                drawRect(
+                    Brush.verticalGradient(
+                        listOf(
+                            top.copy(alpha = 0.50f),
+                            middle.copy(alpha = 0.30f),
+                            Color.Transparent
+                        )
+                    )
+                )
+            }
+    )
 }
 
 
@@ -245,121 +328,201 @@ private fun SectionTitle(title: String, action: String? = null) {
 
 // ---------- Pilihan Cepat ----------
 
+private val QuickPickFrontHeight = 164.dp   // tinggi lapisan depan (hitam)
+private val QuickPickLip = 8.dp                // tebal garis warna di bawah lapisan depan
+private val QuickPickBackExtra = 18.dp         // tambahan tinggi: lapisan hitam paling belakang
+private val QuickPickRadius = 26.dp
+private val QuickPickBezel = 7.dp              // bingkai hitam di sekeliling panel cover
+private val QuickPickPanelHeight = 92.dp       // tinggi panel di sisi kanan (yang paling tinggi)
+private const val PANEL_LEFT_FRACTION = 0.74f  // tinggi panel di sisi kiri relatif terhadap kanan
+
+/**
+ * Kartu Pilihan Cepat: lapisan hitam bertumpuk dengan garis warna di sela-selanya (warnanya ikut
+ * gradasi beranda), panel cover yang bagian bawahnya melandai ke kanan, tombol putar di kiri atas
+ * panel, dan teks di ceruk kiri bawah.
+ */
 @Composable
-private fun QuickPickCard(pick: QuickPick, onOpen: () -> Unit, onPlay: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = remember { NotchedCardShape() }
+private fun QuickPickCard(
+    pick: QuickPick,
+    glowPosition: State<Float>,
+    onOpen: () -> Unit,
+    onPlay: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cardShape = RoundedCornerShape(QuickPickRadius)
+    val panelShape = remember { StepPanelShape(QuickPickRadius - QuickPickBezel) }
 
     Box(
         modifier = modifier
-            .height(168.dp)
-            .clip(shape)
-            .background(Sonora.Surface)
-            .border(1.dp, Sonora.Border, shape)
+            .height(QuickPickFrontHeight + QuickPickBackExtra)
+            .clip(cardShape)
+            .drawBehind {
+                val r = CornerRadius(QuickPickRadius.toPx())
+                val frontH = QuickPickFrontHeight.toPx()
+                val c1 = glowColor(glowPosition.value)
+                val c2 = glowColor(glowPosition.value + 1f)
+                // Lapisan paling belakang
+                drawRoundRect(Color.Black, size = size, cornerRadius = r)
+                // Garis warna (warna yang sama dengan gradasi beranda, dibuat lembut dan menyatu dengan hitam): lapisan depan digeser
+                // ke bawah sedikit sehingga yang terlihat hanya tepi bawahnya
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            c1.copy(alpha = 0.55f),
+                            lerp(c1, c2, 0.5f).copy(alpha = 0.50f),
+                            c2.copy(alpha = 0.45f)
+                        )
+                    ),
+                    topLeft = Offset(0f, QuickPickLip.toPx()),
+                    size = Size(size.width, frontH),
+                    cornerRadius = r
+                )
+                // Lapisan depan
+                drawRoundRect(Color.Black, size = Size(size.width, frontH), cornerRadius = r)
+            }
             .clickable(onClick = onOpen)
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth().height(88.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.White).clickable(onClick = onPlay),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Play,
-                        contentDescription = "Putar",
-                        tint = Color.Black,
-                        modifier = Modifier.size(18.dp)
-                    )
+        // Panel cover: bentuknya pas dengan lekukan, dengan tepi bergradasi tipis sebagai pembatas
+        Box(
+            modifier = Modifier
+                .padding(QuickPickBezel)
+                .fillMaxWidth()
+                .height(QuickPickPanelHeight)
+                .clip(panelShape)
+                .drawBehind {
+                    // Latar saat cover belum termuat: gradasi warna beranda
+                    val c1 = glowColor(glowPosition.value)
+                    val c2 = glowColor(glowPosition.value + 1f)
+                    drawRect(Brush.linearGradient(listOf(c1, c2), Offset.Zero, Offset(size.width, size.height)))
                 }
-                Spacer(Modifier.width(12.dp))
-                DiagonalCovers(
-                    first = pick.songs.getOrNull(0)?.thumbnailUrl,
-                    second = pick.songs.getOrNull(1)?.thumbnailUrl,
-                    modifier = Modifier.weight(1f).fillMaxHeight()
+        ) {
+            val covers = pick.songs.take(4).map { it.thumbnailUrl }
+            if (covers.isNotEmpty()) {
+                BlendedCovers(urls = covers, modifier = Modifier.fillMaxSize())
+            }
+            // Kilau diagonal tipis + gelap di tepi bawah supaya tepi panel tegas
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.linearGradient(
+                            0f to Color.White.copy(alpha = 0.16f),
+                            0.45f to Color.Transparent,
+                            1f to Color.Black.copy(alpha = 0.28f)
+                        )
+                    )
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .border(
+                        1.dp,
+                        Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), Color.White.copy(alpha = 0.04f))),
+                        panelShape
+                    )
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 12.dp, top = 12.dp)
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White)
+                    .clickable(onClick = onPlay),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = AppIcons.Play,
+                    contentDescription = "Putar",
+                    tint = Color.Black,
+                    modifier = Modifier.size(18.dp)
                 )
             }
-            Spacer(Modifier.weight(1f))
-            Text(pick.label, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text(pick.subtitle, fontSize = 12.sp, color = Sonora.TextSecondary)
+        }
+
+        // Teks di ceruk kiri bawah panel
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(
+                    start = QuickPickBezel + 10.dp,
+                    top = QuickPickBezel + QuickPickPanelHeight * PANEL_LEFT_FRACTION + 8.dp,
+                    end = 14.dp
+                )
+        ) {
+            Text(pick.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(pick.subtitle, fontSize = 12.sp, color = Sonora.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
 
+/**
+ * Cover berjejer, tiap cover saling tumpang tindih dan memudar halus dari tepi kirinya sehingga
+ * perpindahan antar foto menyatu (tidak ada garis patah).
+ */
 @Composable
-private fun DiagonalCovers(first: String?, second: String?, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(16.dp)
-
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Sonora.SurfaceHigh)
-            .border(1.dp, Sonora.Border, shape)
-    ) {
-        AsyncImage(
-            model = first,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().clip(DiagonalShape(left = true))
-        )
-        AsyncImage(
-            model = second,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize().clip(DiagonalShape(left = false))
-        )
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawLine(
-                color = Color(0xFFE2DAFF),
-                start = Offset(size.width * 0.36f, size.height),
-                end = Offset(size.width * 0.67f, 0f),
-                strokeWidth = 2.dp.toPx()
+private fun BlendedCovers(urls: List<String?>, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier = modifier) {
+        val n = urls.size
+        val segment = maxWidth / n
+        val overlap = segment * 0.6f
+        urls.forEachIndexed { index, url ->
+            val blended = index > 0
+            val start = if (blended) segment * index - overlap else 0.dp
+            val width = if (blended) segment + overlap else segment
+            AsyncImage(
+                model = url,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .offset(x = start)
+                    .width(width)
+                    .fillMaxHeight()
+                    .then(if (blended) Modifier.fadeInFromLeft(overlap / width) else Modifier)
             )
         }
     }
 }
 
-/** Dua potongan miring: kiri dan kanan garis diagonal. */
-private class DiagonalShape(private val left: Boolean) : Shape {
-    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val w = size.width
-        val h = size.height
-        val topX = w * 0.67f
-        val bottomX = w * 0.36f
-        val path = Path().apply {
-            if (left) {
-                moveTo(0f, 0f); lineTo(topX, 0f); lineTo(bottomX, h); lineTo(0f, h)
-            } else {
-                moveTo(topX, 0f); lineTo(w, 0f); lineTo(w, h); lineTo(bottomX, h)
-            }
-            close()
-        }
-        return Outline.Generic(path)
+/** Membuat bagian kiri (sebesar [fraction] lebar) memudar dari transparan ke penuh, dengan kurva halus. */
+private fun Modifier.fadeInFromLeft(fraction: Float): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        drawRect(
+            brush = Brush.horizontalGradient(
+                0f to Color.Transparent,
+                fraction * 0.35f to Color.Black.copy(alpha = 0.18f),
+                fraction * 0.70f to Color.Black.copy(alpha = 0.75f),
+                fraction to Color.Black,
+                1f to Color.Black
+            ),
+            blendMode = BlendMode.DstIn
+        )
     }
-}
 
-/** Kartu dengan sudut kiri-atas dan kanan-bawah yang "digigit" (cekung), sudut lain membulat. */
-private class NotchedCardShape(
-    private val corner: androidx.compose.ui.unit.Dp = 20.dp,
-    private val notch: androidx.compose.ui.unit.Dp = 18.dp
-) : Shape {
+/** Persegi panjang bersudut membulat; sisi bawahnya lebih rendah di kanan, disambung kurva S yang halus. */
+private class StepPanelShape(private val radius: Dp) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
-        val r = with(density) { corner.toPx() }
-        val n = with(density) { notch.toPx() }
         val w = size.width
         val h = size.height
-
+        val r = with(density) { radius.toPx() }
+        val yl = h * PANEL_LEFT_FRACTION   // dasar panel di sisi kiri
+        val xa = w * 0.40f                 // kurva mulai (kiri)
+        val xb = w * 0.58f                 // kurva selesai (kanan)
+        val k = (xb - xa) * 0.55f
         val path = Path().apply {
-            moveTo(n, 0f)
+            moveTo(r, 0f)
             lineTo(w - r, 0f)
-            arcTo(Rect(w - 2 * r, 0f, w, 2 * r), -90f, 90f, false)       // kanan-atas membulat
-            lineTo(w, h - n)
-            arcTo(Rect(w - n, h - n, w + n, h + n), -90f, -90f, false)   // kanan-bawah cekung
-            lineTo(r, h)
-            arcTo(Rect(0f, h - 2 * r, 2 * r, h), 90f, 90f, false)        // kiri-bawah membulat
-            lineTo(0f, n)
-            arcTo(Rect(-n, -n, n, n), 90f, -90f, false)                  // kiri-atas cekung
+            arcTo(Rect(w - 2 * r, 0f, w, 2 * r), -90f, 90f, false)
+            lineTo(w, h - r)
+            arcTo(Rect(w - 2 * r, h - 2 * r, w, h), 0f, 90f, false)
+            lineTo(xb, h)
+            cubicTo(xb - k, h, xa + k, yl, xa, yl)
+            lineTo(r, yl)
+            arcTo(Rect(0f, yl - 2 * r, 2 * r, yl), 90f, 90f, false)
+            lineTo(0f, r)
+            arcTo(Rect(0f, 0f, 2 * r, 2 * r), 180f, 90f, false)
             close()
         }
         return Outline.Generic(path)
@@ -477,7 +640,7 @@ private fun GenrePill(genre: Genre, onClick: () -> Unit, modifier: Modifier = Mo
 // ---------- Artis Pilihan ----------
 
 @Composable
-private fun ArtistRow(rank: Int, artist: ArtistStat, onClick: () -> Unit) {
+private fun ArtistRow(rank: Int, artist: ArtistStat, subscribers: Long?, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -502,14 +665,24 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, onClick: () -> Unit) {
                 modifier = Modifier.size(52.dp).clip(CircleShape).background(Sonora.SurfaceHigh)
             )
             Spacer(Modifier.width(12.dp))
-            Text(
-                text = artist.name,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            Column {
+                Text(
+                    text = artist.name,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
+                )
+                if (subscribers != null && subscribers >= 0) {
+                    Text(
+                        text = "${compactCount(subscribers)} subscribers",
+                        fontSize = 12.sp,
+                        color = Sonora.TextSecondary,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }

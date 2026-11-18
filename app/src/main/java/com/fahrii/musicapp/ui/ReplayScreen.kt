@@ -173,7 +173,9 @@ fun ReplayScreen(
     onOpenArtist: (String) -> Unit,
     onBack: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    currentSongUrl: String? = null,
+    isPlaying: Boolean = false
 ) {
     val today = remember { LocalDate.now() }
     var year by rememberSaveable { mutableIntStateOf(today.year) }
@@ -256,6 +258,8 @@ fun ReplayScreen(
             onOpenArtist = onOpenArtist,
             onPlay = onPlay,
             onBack = { openedAlbumKey = null },
+            currentSongUrl = currentSongUrl,
+            isPlaying = isPlaying,
             modifier = modifier
         )
         return
@@ -277,7 +281,9 @@ fun ReplayScreen(
             onOpenAlbum = { openedAlbumKey = it },
             onPlay = onPlay,
             onBack = { fullList = null },
-            modifier = modifier
+            modifier = modifier,
+            currentSongUrl = currentSongUrl,
+            isPlaying = isPlaying
         )
         return
     }
@@ -428,6 +434,8 @@ fun ReplayScreen(
                                         TopSongRow(
                                             rank = rank,
                                             item = item,
+                                            isCurrent = item.song.url == currentSongUrl,
+                                            isPlaying = isPlaying,
                                             onClick = { onPlay(queue, rank - 1) }
                                         )
                                         if (i < rows.lastIndex) {
@@ -597,6 +605,8 @@ private fun ReplayFullList(
     onRequestSongAlbum: (Song) -> Unit,
     onOpenArtist: (String) -> Unit,
     onOpenAlbum: (String) -> Unit,
+    currentSongUrl: String?,
+    isPlaying: Boolean,
     onPlay: (List<Song>, Int) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
@@ -673,6 +683,8 @@ private fun ReplayFullList(
                     TopSongRow(
                         rank = index + 1,
                         item = item,
+                        isCurrent = item.song.url == currentSongUrl,
+                        isPlaying = isPlaying,
                         onClick = { onPlay(queue, index) }
                     )
                 }
@@ -956,7 +968,13 @@ private fun AlbumCard(rank: Int, album: TopAlbum, onClick: () -> Unit) {
 }
 
 @Composable
-private fun TopSongRow(rank: Int, item: MonthSong, onClick: () -> Unit) {
+private fun TopSongRow(
+    rank: Int,
+    item: MonthSong,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -964,12 +982,17 @@ private fun TopSongRow(rank: Int, item: MonthSong, onClick: () -> Unit) {
             .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = item.song.thumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Crop
-        )
+        // Lagu yang sedang diputar: thumbnail diganti ritme (sama seperti daftar lagu lain)
+        if (isCurrent && isPlaying) {
+            PlayingThumb(isPlaying = isPlaying, size = 48.dp)
+        } else {
+            AsyncImage(
+                model = item.song.thumbnailUrl,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(6.dp)),
+                contentScale = ContentScale.Crop
+            )
+        }
         Text(
             text = "$rank",
             fontSize = 18.sp,
@@ -1007,6 +1030,8 @@ private fun AlbumDetailScreen(
     onOpenArtist: (String) -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
     onBack: () -> Unit,
+    currentSongUrl: String?,
+    isPlaying: Boolean,
     modifier: Modifier = Modifier
 ) {
     var loading by remember(album.key) { mutableStateOf(true) }
@@ -1036,147 +1061,133 @@ private fun AlbumDetailScreen(
 
     val tracks: List<Song> = full?.songs ?: listened.map { it.song }
     val coverUrl = full?.coverUrl ?: album.coverUrl
-    val coverShape = RoundedCornerShape(16.dp)
+    val listState = rememberLazyListState()
+    val backdrop = rememberGlassBackdrop()
+    var titleBottom by remember(album.key) { mutableFloatStateOf(Float.MAX_VALUE) }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 24.dp + LocalBottomInset.current
-        )
-    ) {
-        item {
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(AppIcons.BackArrow, contentDescription = "Kembali", modifier = Modifier.size(20.dp))
-            }
-        }
-        item {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(coverShape)
-                        .background(Sonora.SurfaceHigh)
-                        .border(1.dp, Sonora.Border, coverShape)
-                ) {
-                    if (coverUrl != null) {
-                        AsyncImage(
-                            model = coverUrl,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().glassSource(backdrop),
+            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)
+        ) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    CoverCollageHeader(urls = listOf(coverUrl)) {
+                        Text(
+                            text = album.title,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.onGloballyPositioned { titleBottom = it.boundsInRoot().bottom }
+                        )
+                        Text(
+                            text = album.artist,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenArtist(album.artist) }
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                        val totalSec = tracks.sumOf { it.durationSeconds.coerceAtLeast(0L) }
+                        val info = buildString {
+                            append("Album · ${tracks.size} lagu")
+                            if (full != null && totalSec > 0) append(" · ${totalSec / 60} mnt")
+                        }
+                        if (tracks.isNotEmpty()) {
+                            Text(text = info, fontSize = 14.sp, color = Sonora.TextSecondary, modifier = Modifier.padding(top = 2.dp))
+                        }
+                        Text(
+                            text = "Kamu mendengarkan ${minutesLabel(album.listenedMs)} · $monthLabel",
+                            fontSize = 13.sp,
+                            color = Muted,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    if (tracks.isNotEmpty()) {
+                        HeroActions(
+                            enabled = true,
+                            onPlay = { onPlay(tracks, 0) },
+                            onShuffle = { onPlay(tracks.shuffled(), 0) }
                         )
                     }
                 }
-                Text(
-                    text = album.title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-                Text(
-                    text = album.artist,
-                    fontSize = 16.sp,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onOpenArtist(album.artist) }
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+            }
 
-                val totalSec = tracks.sumOf { it.durationSeconds.coerceAtLeast(0L) }
-                val info = buildString {
-                    append("Album · ${tracks.size} ${if (tracks.size == 1) "song" else "songs"}")
-                    if (full != null && totalSec > 0) append(" · ${totalSec / 60} min")
-                }
-                if (tracks.isNotEmpty()) {
-                    Text(text = info, fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 4.dp))
-                }
-                Text(
-                    text = "Kamu mendengarkan ${minutesLabel(album.listenedMs)} · $monthLabel",
-                    fontSize = 13.sp,
-                    color = Muted,
-                    textAlign = TextAlign.Center
-                )
-
-                if (tracks.isNotEmpty()) {
+            when {
+                loading && full == null -> item {
                     Box(
-                        modifier = Modifier
-                            .padding(top = 16.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .clickable { onPlay(tracks, 0) }
-                            .padding(horizontal = 32.dp, vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp, horizontal = 16.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Putar",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Black
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                    }
+                }
+
+                full != null -> itemsIndexed(tracks, key = { index, t -> "$index-${t.url}" }) { index, song ->
+                    val plays = playsByUrl[song.url] ?: playsByTitle[song.title.trim().lowercase()] ?: 0
+                    Box(Modifier.padding(horizontal = 16.dp)) {
+                        AlbumTrackRow(
+                            number = index + 1,
+                            song = song,
+                            plays = plays,
+                            isCurrent = song.url == currentSongUrl,
+                            isPlaying = isPlaying,
+                            onClick = { onPlay(tracks, index) }
                         )
+                    }
+                }
+
+                else -> {
+                    item {
+                        Text(
+                            text = "Tracklist lengkap tidak bisa dimuat. Yang tampil hanya lagu album ini yang sudah kamu dengar.",
+                            fontSize = 13.sp,
+                            color = Muted,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp)
+                        )
+                    }
+                    itemsIndexed(listened, key = { _, t -> t.song.url }) { index, item ->
+                        Box(Modifier.padding(horizontal = 16.dp)) {
+                            TopSongRow(
+                                rank = index + 1,
+                                item = item,
+                                isCurrent = item.song.url == currentSongUrl,
+                                isPlaying = isPlaying,
+                                onClick = { onPlay(tracks, index) }
+                            )
+                        }
                     }
                 }
             }
         }
 
-        when {
-            loading && full == null -> item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
-                }
-            }
-
-            full != null -> itemsIndexed(tracks, key = { index, t -> "$index-${t.url}" }) { index, song ->
-                val plays = playsByUrl[song.url] ?: playsByTitle[song.title.trim().lowercase()] ?: 0
-                AlbumTrackRow(
-                    number = index + 1,
-                    song = song,
-                    plays = plays,
-                    onClick = { onPlay(tracks, index) }
-                )
-            }
-
-            else -> {
-                item {
-                    Text(
-                        text = "Tracklist lengkap tidak bisa dimuat. Yang tampil hanya lagu album ini yang sudah kamu dengar.",
-                        fontSize = 13.sp,
-                        color = Muted,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                itemsIndexed(listened, key = { _, t -> t.song.url }) { index, item ->
-                    TopSongRow(rank = index + 1, item = item, onClick = { onPlay(tracks, index) })
-                }
-            }
-        }
+        HeroTopBars(
+            title = album.title,
+            listState = listState,
+            titleBottom = titleBottom,
+            backdrop = backdrop,
+            onBack = onBack
+        )
     }
 }
 
 @Composable
-private fun AlbumTrackRow(number: Int, song: Song, plays: Int, onClick: () -> Unit) {
+private fun AlbumTrackRow(
+    number: Int,
+    song: Song,
+    plays: Int,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1195,6 +1206,7 @@ private fun AlbumTrackRow(number: Int, song: Song, plays: Int, onClick: () -> Un
             Text(
                 text = song.title,
                 fontSize = 16.sp,
+                fontWeight = if (isCurrent) FontWeight.Bold else null,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1205,6 +1217,10 @@ private fun AlbumTrackRow(number: Int, song: Song, plays: Int, onClick: () -> Un
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        // Ritme lagu aktif, di sebelah kiri durasi: bergerak saat diputar, diam saat dijeda
+        if (isCurrent) {
+            PlayingBars(isPlaying = isPlaying, modifier = Modifier.padding(start = 12.dp))
         }
         if (song.durationSeconds > 0) {
             Text(

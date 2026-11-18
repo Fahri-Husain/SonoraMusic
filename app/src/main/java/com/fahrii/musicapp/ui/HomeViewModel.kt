@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.ChartRepository
+import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.QuickPickRepository
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.Job
@@ -48,6 +49,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     /** Artis paling sering didengar di dunia (chart global Deezer). */
     val artists: StateFlow<List<ArtistStat>> = chartArtists.asStateFlow()
 
+    private val artistSubscribers = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+    /** Jumlah subscriber tiap artis pilihan (kunci = nama artis), terisi satu per satu begitu didapat. */
+    val subscribers: StateFlow<Map<String, Long>> = artistSubscribers.asStateFlow()
+
     private var quickPicksJob: Job? = null
 
     init {
@@ -64,7 +70,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
             val r = releases.await()
             val t = trending.await()
-            artistChart.await().getOrNull()?.let { chartArtists.value = it.take(3) }
+            artistChart.await().getOrNull()?.let { list ->
+                val top = list.take(3)
+                chartArtists.value = top
+                loadSubscribers(top)
+            }
 
             _state.update {
                 it.copy(
@@ -80,6 +90,20 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         loadQuickPicks()
+    }
+
+    /** Ambil jumlah subscriber tiap artis (profil yang sama dengan halaman artis), paralel. */
+    private fun loadSubscribers(artists: List<ArtistStat>) {
+        artists.forEach { artist ->
+            if ((artistSubscribers.value[artist.name] ?: -1L) >= 0) return@forEach
+            viewModelScope.launch {
+                val count = runCatching { MusicRepository.findArtistProfile(artist.name)?.subscribers }
+                    .getOrNull()
+                if (count != null && count >= 0) {
+                    artistSubscribers.update { it + (artist.name to count) }
+                }
+            }
+        }
     }
 
     /**

@@ -219,33 +219,8 @@ private fun PickHero(
         if (totalSeconds > 0) append(" · ${formatTotal(totalSeconds)}")
     }
 
-    Box(modifier = Modifier.fillMaxWidth()) {
-        // Latar: cover pertama diperbesar, diburamkan, lalu memudar ke warna background
-        AsyncImage(
-            model = songs.firstOrNull()?.thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize().blur(40.dp).alpha(0.55f)
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Sonora.Background)))
-        )
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .padding(top = 56.dp, bottom = 20.dp)
-                .padding(horizontal = 20.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            CoverMosaic(
-                urls = songs.take(4).map { it.thumbnailUrl },
-                modifier = Modifier.size(208.dp)
-            )
-            Spacer(Modifier.height(20.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CoverCollageHeader(urls = songs.take(4).map { it.thumbnailUrl }) {
             Text(
                 text = pick.label,
                 fontSize = 30.sp,
@@ -256,106 +231,15 @@ private fun PickHero(
             Spacer(Modifier.height(4.dp))
             Text(
                 text = pick.subtitle,
-                fontSize = 14.sp,
-                color = Color(0xFFD0D0D5),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.White,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(2.dp))
-            Text(info, fontSize = 12.sp, color = Sonora.TextSecondary)
-            Spacer(Modifier.height(20.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                PillButton(
-                    text = "Putar",
-                    icon = AppIcons.Play,
-                    filled = true,
-                    enabled = songs.isNotEmpty(),
-                    onClick = onPlayAll,
-                    modifier = Modifier.weight(1f)
-                )
-                PillButton(
-                    text = "Acak",
-                    icon = AppIcons.Shuffle,
-                    filled = false,
-                    enabled = songs.isNotEmpty(),
-                    onClick = onShuffle,
-                    modifier = Modifier.weight(1f)
-                )
-            }
+            Text(info, fontSize = 14.sp, color = Sonora.TextSecondary)
         }
-    }
-}
-
-/** Empat cover digabung 2x2. Kalau lagunya kurang dari empat, pakai satu cover saja. */
-@Composable
-private fun CoverMosaic(urls: List<String?>, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(24.dp)
-
-    Box(
-        modifier = modifier
-            .clip(shape)
-            .background(Sonora.SurfaceHigh)
-            .border(1.dp, Sonora.Border, shape)
-    ) {
-        if (urls.size >= 4) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    MosaicTile(urls[0], Modifier.weight(1f).fillMaxHeight())
-                    MosaicTile(urls[1], Modifier.weight(1f).fillMaxHeight())
-                }
-                Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    MosaicTile(urls[2], Modifier.weight(1f).fillMaxHeight())
-                    MosaicTile(urls[3], Modifier.weight(1f).fillMaxHeight())
-                }
-            }
-        } else {
-            MosaicTile(urls.firstOrNull(), Modifier.fillMaxSize())
-        }
-    }
-}
-
-@Composable
-private fun MosaicTile(url: String?, modifier: Modifier) {
-    AsyncImage(
-        model = url,
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = modifier
-    )
-}
-
-@Composable
-private fun PillButton(
-    text: String,
-    icon: ImageVector,
-    filled: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val background = if (filled) Color.White else Color.White.copy(alpha = 0.08f)
-    val content = if (filled) Color.Black else Color.White
-
-    Row(
-        modifier = modifier
-            .height(48.dp)
-            .clip(CircleShape)
-            .background(background)
-            .then(
-                if (filled) Modifier
-                else Modifier.border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
-            )
-            .alpha(if (enabled) 1f else 0.4f)
-            .clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(text, color = content, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+        HeroActions(enabled = songs.isNotEmpty(), onPlay = onPlayAll, onShuffle = onShuffle)
     }
 }
 

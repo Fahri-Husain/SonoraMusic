@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -22,6 +24,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +44,8 @@ import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.Song
 
 /**
- * Halaman satu album: sampul, judul, artis (ketuk untuk membuka halaman artis), tombol Putar,
- * dan tracklist lengkap sesuai urutan album.
+ * Halaman satu album: cover memenuhi lebar layar dengan judul ditumpuk di atasnya (gaya sama dengan
+ * Pilihan Cepat), artis (ketuk untuk membuka halaman artis), tombol Acak/Putar, lalu tracklist.
  */
 @Composable
 fun AlbumScreen(
@@ -49,136 +57,106 @@ fun AlbumScreen(
     onPlay: (List<Song>, Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val coverShape = RoundedCornerShape(16.dp)
     val songs = state.songs
+    val listState = rememberLazyListState()
+    val backdrop = rememberGlassBackdrop()
+    var titleBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize().statusBarsPadding(),
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            bottom = 24.dp + LocalBottomInset.current
-        )
-    ) {
-        item {
-            Box(
-                modifier = Modifier
-                    .padding(top = 8.dp)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(AppIcons.BackArrow, contentDescription = "Kembali", modifier = Modifier.size(20.dp))
-            }
-        }
-
-        item {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(coverShape)
-                        .background(Sonora.SurfaceHigh)
-                        .border(1.dp, Sonora.Border, coverShape)
-                ) {
-                    if (state.coverUrl != null) {
-                        AsyncImage(
-                            model = state.coverUrl,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize().glassSource(backdrop),
+            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)
+        ) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    CoverCollageHeader(urls = listOf(state.coverUrl)) {
+                        Text(
+                            text = state.title,
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.onGloballyPositioned { titleBottom = it.boundsInRoot().bottom }
+                        )
+                        Text(
+                            text = state.artist,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onOpenArtist(state.artist) }
+                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                        if (songs.isNotEmpty()) {
+                            val totalSec = songs.sumOf { it.durationSeconds.coerceAtLeast(0L) }
+                            val info = buildString {
+                                append("Album · ${songs.size} ${if (songs.size == 1) "lagu" else "lagu"}")
+                                if (totalSec > 0) append(" · ${totalSec / 60} mnt")
+                            }
+                            Text(
+                                text = info,
+                                fontSize = 14.sp,
+                                color = Sonora.TextSecondary,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                        }
+                    }
+                    if (songs.isNotEmpty()) {
+                        HeroActions(
+                            enabled = true,
+                            onPlay = { onPlay(songs, 0) },
+                            onShuffle = { onPlay(songs.shuffled(), 0) }
                         )
                     }
                 }
-                Text(
-                    text = state.title,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-                Text(
-                    text = state.artist,
-                    fontSize = 16.sp,
-                    color = Color.White.copy(alpha = 0.8f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier
-                        .padding(top = 4.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onOpenArtist(state.artist) }
-                        .padding(horizontal = 8.dp, vertical = 2.dp)
-                )
+            }
 
-                if (songs.isNotEmpty()) {
-                    val totalSec = songs.sumOf { it.durationSeconds.coerceAtLeast(0L) }
-                    val info = buildString {
-                        append("Album · ${songs.size} ${if (songs.size == 1) "song" else "songs"}")
-                        if (totalSec > 0) append(" · ${totalSec / 60} min")
-                    }
-                    Text(
-                        text = info,
-                        fontSize = 13.sp,
-                        color = Sonora.TextSecondary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+            when {
+                state.loading -> item {
                     Box(
-                        modifier = Modifier
-                            .padding(top = 16.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .clickable { onPlay(songs, 0) }
-                            .padding(horizontal = 32.dp, vertical = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "Putar",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color.Black
-                        )
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
                     }
                 }
-            }
-        }
 
-        when {
-            state.loading -> item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                state.failed || songs.isEmpty() -> item {
+                    Text(
+                        text = "Tracklist album ini tidak bisa dimuat.",
+                        fontSize = 14.sp,
+                        color = Sonora.TextSecondary,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp, horizontal = 16.dp)
+                    )
+                }
+
+                else -> itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
+                    AlbumTrackRow(
+                        number = index + 1,
+                        song = song,
+                        isCurrent = song.url == currentSongUrl,
+                        isPlaying = isPlaying,
+                        onClick = { onPlay(songs, index) },
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
                 }
             }
-
-            state.failed || songs.isEmpty() -> item {
-                Text(
-                    text = "Tracklist album ini tidak bisa dimuat.",
-                    fontSize = 14.sp,
-                    color = Sonora.TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp)
-                )
-            }
-
-            else -> itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
-                AlbumTrackRow(
-                    number = index + 1,
-                    song = song,
-                    isCurrent = song.url == currentSongUrl,
-                    isPlaying = isPlaying,
-                    onClick = { onPlay(songs, index) }
-                )
-            }
         }
+
+        HeroTopBars(
+            title = state.title,
+            listState = listState,
+            titleBottom = titleBottom,
+            backdrop = backdrop,
+            onBack = onBack
+        )
     }
 }
 
@@ -188,10 +166,11 @@ private fun AlbumTrackRow(
     song: Song,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 10.dp),

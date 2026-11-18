@@ -215,7 +215,7 @@ fun AppRoot(
                             viewModel = homeViewModel,
                             onPlay = { songs, index, source -> playerViewModel.playQueue(songs, index, source) },
                             onGenreClick = ::openSearch,
-                            onArtistClick = ::openSearch,
+                            onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                             listState = homeListState,
                             onPickClick = { navController.navigate("pick/$it") },
                             topInset = with(density) { headerHeightPx.toDp() }
@@ -273,7 +273,9 @@ fun AppRoot(
                                 onRequestSongAlbum = libraryViewModel::requestSongAlbum,
                                 onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                                 onBack = { navController.popBackStack() },
-                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Replay") }
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Replay") },
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying
                             )
                         }
                     }

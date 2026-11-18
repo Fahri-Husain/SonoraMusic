@@ -508,7 +508,7 @@ private fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
     }
 }
 
-private fun compactCount(n: Long): String = when {
+internal fun compactCount(n: Long): String = when {
     n >= 1_000_000_000L -> "%.1fB".format(Locale.US, n / 1_000_000_000.0)
     n >= 1_000_000L -> "%.1fM".format(Locale.US, n / 1_000_000.0)
     n >= 1_000L -> "%.1fK".format(Locale.US, n / 1_000.0)
