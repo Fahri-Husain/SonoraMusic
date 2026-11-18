@@ -125,6 +125,38 @@ object MusicRepository {
         }
 
     /**
+     * Album yang cocok dengan [query] (pencarian album YouTube Music), untuk bagian "Album" di
+     * hasil pencarian. Hanya rilisan asli (album/single/EP); kalau tidak ada yang cocok dengan
+     * penanda album, pakai semua hasil supaya bagian ini tidak kosong.
+     */
+    suspend fun searchAlbums(query: String, limit: Int = 5): List<ArtistAlbum> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+
+            val extractor = ServiceList.YouTube.getSearchExtractor(
+                query,
+                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS),
+                ""
+            )
+            extractor.fetchPage()
+
+            val allItems = extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
+            val items = allItems.filter { isAlbumPlaylistUrl(it.url) }.ifEmpty { allItems }
+
+            items
+                .map { item ->
+                    ArtistAlbum(
+                        title = item.name,
+                        artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: "",
+                        coverUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                        url = item.url
+                    )
+                }
+                .distinctBy { it.url }
+                .take(limit)
+        }
+
+    /**
      * Cari foto profil artis di YouTube Music (fallback: pencarian channel biasa).
      * Mengembalikan null kalau tidak ketemu.
      */
@@ -198,7 +230,11 @@ object MusicRepository {
             )
             extractor.fetchPage()
 
-            val items = extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
+            val allItems = extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
+            // Album/single/EP rilisan asli punya ID playlist berawalan "OLAK5uy_"; kumpulan lagu
+            // biasa (playlist buatan pengguna, mix, dsb.) tidak. Kalau tidak ada satu pun yang
+            // cocok (format ID berubah), pakai semua hasil supaya bagian album tidak kosong.
+            val items = allItems.filter { isAlbumPlaylistUrl(it.url) }.ifEmpty { allItems }
             // Kalau nama artis di hasil tersedia, pakai untuk menyaring album artis lain
             val hasArtist = items.any { !it.uploaderName.isNullOrBlank() }
             val own = if (hasArtist) {
@@ -219,6 +255,62 @@ object MusicRepository {
                 .distinctBy { it.title.lowercase() }
                 .take(limit)
         }
+
+    private fun isAlbumPlaylistUrl(url: String): Boolean = "list=OLAK5uy_" in url
+
+    /** Ambil semua lagu dari playlist album [playlistUrl] (maksimal beberapa halaman). Null kalau kosong. */
+    private fun loadAlbumPlaylist(
+        playlistUrl: String,
+        title: String,
+        artist: String,
+        coverUrl: String?
+    ): AlbumTracks? {
+        val info = PlaylistInfo.getInfo(ServiceList.YouTube, playlistUrl)
+        val streams = info.relatedItems.filterIsInstance<StreamInfoItem>().toMutableList()
+        var page = info.nextPage
+        var guard = 0
+        while (page != null && guard++ < 3) {
+            val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, playlistUrl, page)
+            streams += more.items.filterIsInstance<StreamInfoItem>()
+            page = more.nextPage
+        }
+        if (streams.isEmpty()) return null
+
+        val cover = coverUrl ?: hdThumbnail(streams.first().thumbnails.lastOrNull()?.url)
+        return AlbumTracks(
+            title = title,
+            artist = artist,
+            coverUrl = cover,
+            songs = streams.map { item ->
+                Song(
+                    url = item.url,
+                    title = item.name,
+                    artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: artist,
+                    thumbnailUrl = cover ?: hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                    durationSeconds = item.duration
+                )
+            }
+        )
+    }
+
+    /**
+     * Tracklist album langsung dari URL playlist albumnya (dipakai halaman artis, yang sudah
+     * punya URL-nya, jadi tidak perlu mencari album lagi). Di-cache selama aplikasi hidup.
+     */
+    suspend fun findAlbumTracksByUrl(
+        url: String,
+        title: String,
+        artist: String,
+        coverUrl: String?
+    ): AlbumTracks? = withContext(Dispatchers.IO) {
+        ensureInit()
+        val cacheKey = "url|$url"
+        albumCache[cacheKey]?.let { return@withContext it }
+
+        val result = loadAlbumPlaylist(url, title, artist, coverUrl) ?: return@withContext null
+        albumCache[cacheKey] = result
+        result
+    }
 
     /**
      * Tracklist lengkap sebuah album: cari album di YouTube Music dari [title] + [artist],
@@ -248,32 +340,12 @@ object MusicRepository {
                 ?: items.firstOrNull { sameTitle(it) }
                 ?: return@withContext null
 
-            val info = PlaylistInfo.getInfo(ServiceList.YouTube, best.url)
-            val streams = info.relatedItems.filterIsInstance<StreamInfoItem>().toMutableList()
-            var page = info.nextPage
-            var guard = 0
-            while (page != null && guard++ < 3) {
-                val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, best.url, page)
-                streams += more.items.filterIsInstance<StreamInfoItem>()
-                page = more.nextPage
-            }
-            if (streams.isEmpty()) return@withContext null
-
-            val cover = hdThumbnail(best.thumbnails.lastOrNull()?.url)
-            val result = AlbumTracks(
+            val result = loadAlbumPlaylist(
+                playlistUrl = best.url,
                 title = best.name,
                 artist = best.uploaderName?.takeIf { it.isNotBlank() } ?: artist,
-                coverUrl = cover,
-                songs = streams.map { item ->
-                    Song(
-                        url = item.url,
-                        title = item.name,
-                        artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: artist,
-                        thumbnailUrl = cover ?: hdThumbnail(item.thumbnails.lastOrNull()?.url),
-                        durationSeconds = item.duration
-                    )
-                }
-            )
+                coverUrl = hdThumbnail(best.thumbnails.lastOrNull()?.url)
+            ) ?: return@withContext null
             albumCache[cacheKey] = result
             result
         }
@@ -298,9 +370,39 @@ object MusicRepository {
         parseAlbumFromDescription(info.description?.content)
     }
 
+    private val brRegex = Regex("<br\\s*/?>", RegexOption.IGNORE_CASE)
+    private val blockEndRegex = Regex("</(p|div)\\s*>", RegexOption.IGNORE_CASE)
+    private val tagRegex = Regex("<[^>]+>")
+    private val numericEntityRegex = Regex("&#(x?[0-9a-fA-F]+);")
+
+    /**
+     * NewPipe memberi deskripsi YouTube dalam bentuk HTML: baris baru jadi `<br>`, link jadi `<a>`,
+     * dan karakter khusus jadi entity. Diubah dulu ke teks biasa supaya bisa dipecah per baris.
+     */
+    internal fun htmlToPlainText(html: String): String {
+        val withoutTags = html
+            .replace(brRegex, "\n")
+            .replace(blockEndRegex, "\n")
+            .replace(tagRegex, "")
+        val decoded = numericEntityRegex.replace(withoutTags) { m ->
+            val v = m.groupValues[1]
+            val cp = if (v.startsWith("x", ignoreCase = true)) v.drop(1).toIntOrNull(16) else v.toIntOrNull()
+            if (cp != null && cp in 1..0x10FFFF) String(Character.toChars(cp)) else m.value
+        }
+        return decoded
+            .replace("&nbsp;", " ")
+            .replace("&middot;", "·")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&")
+            .replace('\u00a0', ' ')
+    }
+
     internal fun parseAlbumFromDescription(description: String?): String? {
         if (description.isNullOrBlank()) return null
-        val lines = description.lines().map { it.trim() }
+        val lines = htmlToPlainText(description).lines().map { it.trim() }
         val provided = lines.indexOfFirst { it.startsWith("Provided to YouTube by", ignoreCase = true) }
         if (provided < 0) return null
         // Baris "Judul · Artis", lalu baris berikutnya yang tidak kosong adalah album

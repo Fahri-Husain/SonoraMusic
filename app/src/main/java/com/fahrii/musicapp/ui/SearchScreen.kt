@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.R
+import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.ArtistResult
 import com.fahrii.musicapp.data.Song
 import androidx.compose.foundation.layout.PaddingValues
@@ -71,7 +72,8 @@ fun SearchScreen(
     currentSongUrl: String? = null,
     isPlaying: Boolean = false,
     onSongClick: (List<Song>, Int) -> Unit = { _, _ -> },
-    onArtistClick: (String) -> Unit = {}
+    onArtistClick: (String) -> Unit = {},
+    onAlbumClick: (ArtistAlbum) -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     val history by viewModel.history.collectAsState()
@@ -160,7 +162,7 @@ fun SearchScreen(
                     modifier = Modifier.align(Alignment.Center)
                 )
 
-                state.hasSearched && state.results.isEmpty() && state.artists.isEmpty() -> Text(
+                state.hasSearched && state.results.isEmpty() && state.artists.isEmpty() && state.albums.isEmpty() -> Text(
                     text = "Lagu tidak ditemukan",
                     modifier = Modifier.align(Alignment.Center)
                 )
@@ -188,9 +190,10 @@ fun SearchScreen(
                                 }
                             )
                         }
-                        if (state.results.isNotEmpty()) {
-                            item(key = "header-songs") { SectionTitle("Lagu") }
-                        }
+                    }
+                    // Judul "Lagu" hanya perlu kalau ada bagian lain (artis/album) yang menyertainya
+                    if (state.results.isNotEmpty() && (state.artists.isNotEmpty() || state.albums.isNotEmpty())) {
+                        item(key = "header-songs") { SectionTitle("Lagu") }
                     }
                     itemsIndexed(
                         state.results,
@@ -205,6 +208,20 @@ fun SearchScreen(
                                 onSongClick(state.results, index)
                             }
                         )
+                    }
+
+                    // Album di bawah lagu: sampul + judul + artis, ketuk untuk membuka halaman album
+                    if (state.albums.isNotEmpty()) {
+                        item(key = "header-albums") { SectionTitle("Album") }
+                        items(state.albums, key = { "album-${it.url}" }) { album ->
+                            AlbumRow(
+                                album = album,
+                                onClick = {
+                                    dismissKeyboard()
+                                    onAlbumClick(album)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -346,6 +363,44 @@ private fun ArtistRow(artist: ArtistResult, onClick: () -> Unit) {
                 text = "Artis",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/** Satu album di hasil pencarian: sampul persegi, judul album, dan label "Album · artis". */
+@Composable
+private fun AlbumRow(album: ArtistAlbum, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = album.coverUrl,
+            contentDescription = null,
+            modifier = Modifier
+                .size(56.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Sonora.SurfaceHigh),
+            contentScale = ContentScale.Crop
+        )
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = album.title,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = if (album.artist.isBlank()) "Album" else "Album · ${album.artist}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

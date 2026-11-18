@@ -52,6 +52,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.fahrii.musicapp.data.ArtistAlbum
 import androidx.compose.foundation.layout.padding
 import android.net.Uri
 import android.widget.Toast
@@ -67,6 +68,7 @@ private const val ROUTE_PLAYER = "player"
 private const val ROUTE_PICK = "pick/{index}"
 private const val ROUTE_REPLAY = "replay"
 private const val ROUTE_ARTIST = "artist/{name}"
+private const val ROUTE_ALBUM = "album?title={title}&artist={artist}&url={url}&cover={cover}"
 private const val ROUTE_MOST_PLAYED = "most_played"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
@@ -111,7 +113,7 @@ fun AppRoot(
     }
     val onPlayerScreen = route == ROUTE_PLAYER
     val currentTab = when (route) {
-        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST -> BottomTab.COLLECTION
+        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST, ROUTE_ALBUM -> BottomTab.COLLECTION
         ROUTE_SEARCH -> BottomTab.SEARCH
         else -> BottomTab.HOME
     }
@@ -140,6 +142,15 @@ fun AppRoot(
         searchViewModel.onQueryChange(query)
         searchViewModel.search()
         navController.navigateToTab(ROUTE_SEARCH)
+    }
+
+    fun openAlbum(album: ArtistAlbum) {
+        navController.navigate(
+            "album?title=${Uri.encode(album.title)}" +
+                    "&artist=${Uri.encode(album.artist)}" +
+                    "&url=${Uri.encode(album.url)}" +
+                    "&cover=${Uri.encode(album.coverUrl.orEmpty())}"
+        )
     }
 
     Surface(
@@ -221,7 +232,8 @@ fun AppRoot(
                                     val q = searchViewModel.state.value.query.trim()
                                     playerViewModel.playQueue(songs, index, if (q.isNotEmpty()) "Pencarian \"$q\"" else "Pencarian")
                                 },
-                                onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") }
+                                onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
+                                onAlbumClick = ::openAlbum
                             )
                         }
                     }
@@ -280,7 +292,37 @@ fun AppRoot(
                             currentSongUrl = playerState.currentSong?.url,
                             isPlaying = playerState.isPlaying,
                             onBack = { navController.popBackStack() },
-                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Artis \"$name\"") }
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Artis \"$name\"") },
+                            onAlbumClick = ::openAlbum
+                        )
+                    }
+
+                    composable(
+                        route = ROUTE_ALBUM,
+                        arguments = listOf(
+                            navArgument("title") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("artist") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("url") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("cover") { type = NavType.StringType; defaultValue = "" }
+                        )
+                    ) { entry ->
+                        val title = entry.arguments?.getString("title").orEmpty()
+                        val artist = entry.arguments?.getString("artist").orEmpty()
+                        val url = entry.arguments?.getString("url").orEmpty()
+                        val cover = entry.arguments?.getString("cover").orEmpty().ifBlank { null }
+                        val albumViewModel: AlbumViewModel = viewModel()
+                        val albumState by albumViewModel.state.collectAsState()
+                        LaunchedEffect(url, title, artist) { albumViewModel.load(url, title, artist, cover) }
+
+                        AlbumScreen(
+                            state = albumState,
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
+                            onPlay = { songs, index ->
+                                playerViewModel.playQueue(songs, index, "Album \"${albumState.title}\"")
+                            }
                         )
                     }
 

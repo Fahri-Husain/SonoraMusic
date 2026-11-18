@@ -61,6 +61,20 @@ class AlbumRepository private constructor(context: Context) {
         }
     }
 
+    /**
+     * Catat album untuk banyak lagu sekaligus saat albumnya sudah pasti diketahui (mis. dibuka dari
+     * halaman album), tanpa perlu mencari lewat deskripsi video. Yang sudah punya album tidak ditimpa.
+     */
+    fun record(songUrls: Collection<String>, album: String) {
+        val name = album.trim()
+        if (name.isEmpty()) return
+        val toAdd = songUrls.filter { it.isNotEmpty() && !_albums.value.containsKey(it) }
+        if (toAdd.isEmpty()) return
+
+        _albums.update { current -> current + toAdd.associateWith { name } }
+        scope.launch { persist() }
+    }
+
     private suspend fun persist() {
         saveMutex.withLock {
             runCatching {

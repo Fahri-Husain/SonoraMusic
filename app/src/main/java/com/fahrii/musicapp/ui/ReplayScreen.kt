@@ -1,8 +1,11 @@
 package com.fahrii.musicapp.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import kotlinx.coroutines.CancellationException
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +21,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -33,6 +39,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -41,11 +49,16 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -85,6 +98,9 @@ private const val ALBUM_LOOKUP_LIMIT = 30
 
 /** Artis hanya masuk Top Artists kalau total waktu dengarnya minimal segini (1 menit). */
 private const val MIN_ARTIST_LISTEN_MS = 60_000L
+
+/** Album hanya masuk Top Albums kalau total waktu dengar lagu-lagunya di bulan itu minimal segini (1 menit). */
+private const val MIN_ALBUM_LISTEN_MS = 60_000L
 
 /** Di daftar lengkap album, pencarian album diperluas ke lebih banyak lagu (tetap dibatasi). */
 private const val FULL_ALBUM_LOOKUP_LIMIT = 100
@@ -173,6 +189,21 @@ fun ReplayScreen(
     // Di-hoist supaya posisi scroll halaman Replay tidak hilang setelah kembali dari daftar lengkap
     val listState = rememberLazyListState()
 
+    // Bar atas kaca seperti halaman playlist: tombol kembali di hero ikut bergeser naik saat di-scroll,
+    // lalu bar blur berisi panah kembali + judul "Replay" muncul setelah judul mepet status bar
+    val backdrop = rememberGlassBackdrop()
+    var titleBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+    val statusBarBottom = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
+    // Item 0 hanya ruang untuk tombol kembali dan item 1 berisi judul, jadi "sudah lewat" = index > 1
+    val titleCovered by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 1 || titleBottom <= statusBarBottom }
+    }
+    val barAlpha by animateFloatAsState(
+        targetValue = if (titleCovered) 1f else 0f,
+        animationSpec = tween(180),
+        label = "replayBar"
+    )
+
     val years = remember(stats) {
         (stats.keys.mapNotNull { it.take(4).toIntOrNull() } + today.year).distinct().sortedDescending()
     }
@@ -209,6 +240,8 @@ fun ReplayScreen(
     LaunchedEffect(albumLookup) { albumLookup.forEach { onRequestSongAlbum(it.song) } }
     val allAlbums = remember(monthStats, songAlbums) {
         buildTopAlbums(monthStats.songs, songAlbums)
+            // Album baru muncul setelah didengar minimal 1 menit; di bawah itu tidak ditampilkan
+            .filter { it.listenedMs >= MIN_ALBUM_LISTEN_MS }
     }
     val topAlbums = remember(allAlbums) { allAlbums.take(MAX_ALBUMS) }
 
@@ -250,192 +283,268 @@ fun ReplayScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        // Cahaya hangat di bagian atas, seperti referensi
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(380.dp)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFFFF9F0A).copy(alpha = 0.50f),
-                            Color(0xFFE5173F).copy(alpha = 0.30f),
-                            Color.Transparent
+        // Sumber blur untuk bar dan tombol kaca: cahaya hangat + daftar
+        Box(modifier = Modifier.fillMaxSize().glassSource(backdrop)) {
+            // Cahaya hangat di bagian atas, seperti referensi
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(380.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFFFF9F0A).copy(alpha = 0.50f),
+                                Color(0xFFE5173F).copy(alpha = 0.30f),
+                                Color.Transparent
+                            )
                         )
                     )
+            )
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                    bottom = 24.dp + LocalBottomInset.current
                 )
-        )
+            ) {
+                // Ruang untuk tombol kembali (tombolnya sendiri melayang di atas, lihat di bawah)
+                item { Spacer(Modifier.height(48.dp)) }
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier.fillMaxSize().statusBarsPadding(),
-            contentPadding = PaddingValues(bottom = 24.dp + LocalBottomInset.current)
-        ) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .padding(start = 16.dp, top = 8.dp)
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f))
-                        .clickable(onClick = onBack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(AppIcons.BackArrow, contentDescription = "Kembali", modifier = Modifier.size(20.dp))
-                }
-            }
-
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Replay",
-                        fontSize = 34.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    YearPill(
-                        year = year,
-                        years = years,
-                        onSelect = { y ->
-                            year = y
-                            month = if (y == today.year) today.monthValue
-                            else (1..12).lastOrNull { stats.containsKey(monthKey(y, it)) } ?: 12
-                        }
-                    )
-                }
-            }
-
-            item {
-                LazyRow(
-                    state = rememberLazyListState(
-                        initialFirstVisibleItemIndex = (shownMonth - 3).coerceAtLeast(0)
-                    ),
-                    modifier = Modifier.padding(top = 16.dp),
-                    contentPadding = PaddingValues(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(26.dp)
-                ) {
-                    items(lastMonth) { index ->
-                        val m = index + 1
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 16.dp, top = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = MonthShort[index],
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (m == shownMonth) Color.White else Muted,
-                            modifier = Modifier.clickable { month = m }
+                            text = "Replay",
+                            fontSize = 34.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .weight(1f)
+                                .onGloballyPositioned { titleBottom = it.boundsInRoot().bottom }
+                        )
+                        YearPill(
+                            year = year,
+                            years = years,
+                            onSelect = { y ->
+                                year = y
+                                month = if (y == today.year) today.monthValue
+                                else (1..12).lastOrNull { stats.containsKey(monthKey(y, it)) } ?: 12
+                            }
                         )
                     }
                 }
-            }
 
-            item {
-                val monthName = MonthLong[shownMonth - 1]
-                if (hasData) {
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(SpanStyle(color = Muted)) { append("You listened for ") }
-                            withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.Bold)) {
-                                append(minutesLabel(totalMs))
-                            }
-                            withStyle(SpanStyle(color = Muted)) { append(" in $monthName.") }
-                        },
-                        fontSize = 22.sp,
-                        lineHeight = 28.sp,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 28.dp)
-                    )
-                } else {
-                    Text(
-                        text = "Nothing played in $monthName yet. Play a few songs and your Replay will show up here.",
-                        fontSize = 22.sp,
-                        lineHeight = 28.sp,
-                        color = Muted,
-                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 56.dp)
-                    )
+                item {
+                    LazyRow(
+                        state = rememberLazyListState(
+                            initialFirstVisibleItemIndex = (shownMonth - 3).coerceAtLeast(0)
+                        ),
+                        modifier = Modifier.padding(top = 16.dp),
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                        horizontalArrangement = Arrangement.spacedBy(26.dp)
+                    ) {
+                        items(lastMonth) { index ->
+                            val m = index + 1
+                            Text(
+                                text = MonthShort[index],
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (m == shownMonth) Color.White else Muted,
+                                modifier = Modifier.clickable { month = m }
+                            )
+                        }
+                    }
                 }
-            }
 
-            if (hasData) {
-                if (topArtists.isNotEmpty()) {
+                item {
+                    val monthName = MonthLong[shownMonth - 1]
+                    if (hasData) {
+                        Text(
+                            text = buildAnnotatedString {
+                                withStyle(SpanStyle(color = Muted)) { append("You listened for ") }
+                                withStyle(SpanStyle(color = Color.White, fontWeight = FontWeight.Bold)) {
+                                    append(minutesLabel(totalMs))
+                                }
+                                withStyle(SpanStyle(color = Muted)) { append(" in $monthName.") }
+                            },
+                            fontSize = 22.sp,
+                            lineHeight = 28.sp,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 40.dp, bottom = 28.dp)
+                        )
+                    } else {
+                        Text(
+                            text = "Nothing played in $monthName yet. Play a few songs and your Replay will show up here.",
+                            fontSize = 22.sp,
+                            lineHeight = 28.sp,
+                            color = Muted,
+                            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 56.dp)
+                        )
+                    }
+                }
+
+                if (hasData) {
+                    if (topArtists.isNotEmpty()) {
+                        item {
+                            SectionHeading("Your Top Artists", onSeeAll = { fullList = ReplayList.Artists })
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                itemsIndexed(topArtists, key = { _, a -> a.name }) { index, artist ->
+                                    ArtistCard(
+                                        rank = index + 1,
+                                        artist = artist,
+                                        imageUrl = artistImages[ArtistImageRepository.keyOf(artist.name)],
+                                        onClick = { onOpenArtist(artist.name) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
-                        SectionHeading("Your Top Artists", onSeeAll = { fullList = ReplayList.Artists })
+                        SectionHeading(
+                            "Your Top Songs",
+                            topPadding = 32.dp,
+                            onSeeAll = { fullList = ReplayList.Songs }
+                        )
                     }
                     item {
+                        val pageWidth = (LocalConfiguration.current.screenWidthDp - 40).dp
+                        val queue = remember(topSongs) { topSongs.map { it.song } }
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
-                            itemsIndexed(topArtists, key = { _, a -> a.name }) { index, artist ->
-                                ArtistCard(
-                                    rank = index + 1,
-                                    artist = artist,
-                                    imageUrl = artistImages[ArtistImageRepository.keyOf(artist.name)],
-                                    onClick = { onOpenArtist(artist.name) }
-                                )
-                            }
-                        }
-                    }
-                }
-
-                item {
-                    SectionHeading(
-                        "Your Top Songs",
-                        topPadding = 32.dp,
-                        onSeeAll = { fullList = ReplayList.Songs }
-                    )
-                }
-                item {
-                    val pageWidth = (LocalConfiguration.current.screenWidthDp - 40).dp
-                    val queue = remember(topSongs) { topSongs.map { it.song } }
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        itemsIndexed(topSongs.chunked(SONGS_PER_PAGE)) { page, rows ->
-                            Column(modifier = Modifier.width(pageWidth)) {
-                                rows.forEachIndexed { i, item ->
-                                    val rank = page * SONGS_PER_PAGE + i + 1
-                                    TopSongRow(
-                                        rank = rank,
-                                        item = item,
-                                        onClick = { onPlay(queue, rank - 1) }
-                                    )
-                                    if (i < rows.lastIndex) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(start = 88.dp)
-                                                .height(1.dp)
-                                                .background(Sonora.Border.copy(alpha = 0.6f))
+                            itemsIndexed(topSongs.chunked(SONGS_PER_PAGE)) { page, rows ->
+                                Column(modifier = Modifier.width(pageWidth)) {
+                                    rows.forEachIndexed { i, item ->
+                                        val rank = page * SONGS_PER_PAGE + i + 1
+                                        TopSongRow(
+                                            rank = rank,
+                                            item = item,
+                                            onClick = { onPlay(queue, rank - 1) }
                                         )
+                                        if (i < rows.lastIndex) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(start = 88.dp)
+                                                    .height(1.dp)
+                                                    .background(Sonora.Border.copy(alpha = 0.6f))
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                if (topAlbums.isNotEmpty()) {
-                    item {
-                        SectionHeading(
-                            "Your Top Albums",
-                            topPadding = 32.dp,
-                            onSeeAll = { fullList = ReplayList.Albums }
-                        )
-                    }
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            itemsIndexed(topAlbums, key = { _, a -> a.key }) { index, album ->
-                                AlbumCard(rank = index + 1, album = album, onClick = { openedAlbumKey = album.key })
+                    if (topAlbums.isNotEmpty()) {
+                        item {
+                            SectionHeading(
+                                "Your Top Albums",
+                                topPadding = 32.dp,
+                                onSeeAll = { fullList = ReplayList.Albums }
+                            )
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                itemsIndexed(topAlbums, key = { _, a -> a.key }) { index, album ->
+                                    AlbumCard(rank = index + 1, album = album, onClick = { openedAlbumKey = album.key })
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+
+        // Bar atas: kaca blur + panah kembali + judul "Replay", muncul setelah judul di halaman
+        // mepet status bar (sama seperti halaman playlist)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = barAlpha }
+                    .glassFadeBar(backdrop)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(start = 12.dp, top = 8.dp, end = 16.dp, bottom = 24.dp), // bawah lebih tinggi: blur sampai di bawah teks
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = titleCovered, onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = AppIcons.BackArrow,
+                        contentDescription = "Kembali",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp).alpha(barAlpha)
+                    )
+                }
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "Replay",
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier
+                        .weight(1f)
+                        .alpha(barAlpha)
+                        .basicMarquee(iterations = Int.MAX_VALUE)
+                )
+            }
+        }
+
+        // Tombol kembali di hero: bulatan kaca yang ikut bergeser naik bersama isi saat di-scroll
+        // (tidak menempel di layar). Setelah judul tertutup, panahnya muncul lagi di bar atas.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(start = 12.dp, top = 8.dp)
+                .graphicsLayer {
+                    val scrolled = if (listState.firstVisibleItemIndex == 0) {
+                        listState.firstVisibleItemScrollOffset.toFloat()
+                    } else {
+                        Float.MAX_VALUE
+                    }
+                    translationY = -scrolled.coerceAtMost(100_000f)
+                    alpha = if (listState.firstVisibleItemIndex == 0) 1f else 0f
+                }
+                .size(40.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(modifier = Modifier.matchParentSize().glass(backdrop, CircleShape))
+            Icon(
+                imageVector = AppIcons.BackArrow,
+                contentDescription = "Kembali",
+                tint = Color.White,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }
@@ -671,18 +780,21 @@ private fun FullAlbumRow(rank: Int, album: TopAlbum, onClick: () -> Unit) {
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
+            // Teks panjang berjalan (marquee) alih-alih dipotong "..."
             Text(
                 text = album.title,
                 fontSize = 16.sp,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
             Text(
                 text = "${album.artist} · ${minutesLabel(album.listenedMs)}",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
     }
@@ -827,14 +939,16 @@ private fun AlbumCard(rank: Int, album: TopAlbum, onClick: () -> Unit) {
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                 )
                 Text(
                     text = album.artist,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                 )
             }
         }

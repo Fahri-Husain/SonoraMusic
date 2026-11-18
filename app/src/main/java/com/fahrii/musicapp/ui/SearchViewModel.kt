@@ -3,6 +3,7 @@ package com.fahrii.musicapp.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.ArtistResult
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.SearchHistoryRepository
@@ -23,6 +24,8 @@ data class SearchUiState(
     val results: List<Song> = emptyList(),
     /** Artis yang cocok; ditampilkan di atas daftar lagu pada hasil pencarian (bukan di saran). */
     val artists: List<ArtistResult> = emptyList(),
+    /** Album yang cocok; ditampilkan di bawah daftar lagu pada hasil pencarian (bukan di saran). */
+    val albums: List<ArtistAlbum> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null,
     val hasSearched: Boolean = false,
@@ -53,26 +56,46 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
      */
     private var suggestionArtists: List<ArtistResult> = emptyList()
 
+    /** Album untuk [suggestionsFor]; dimuat bersama saran dan dipakai langsung saat menekan cari. */
+    private var suggestionAlbums: List<ArtistAlbum> = emptyList()
+
     fun onQueryChange(newQuery: String) {
         _state.update { it.copy(query = newQuery) }
         scheduleSuggestions(newQuery.trim())
     }
 
-    /** Lagu dan artis untuk [query], dimuat bersamaan. Gagal memuat artis tidak membatalkan lagu. */
-    private suspend fun fetchSongsAndArtists(query: String): Pair<List<Song>, List<ArtistResult>> =
-        coroutineScope {
-            val songs = async { MusicRepository.search(query) }
-            val artists = async {
-                try {
-                    MusicRepository.searchArtists(query)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    emptyList()
-                }
+    private class Found(
+        val songs: List<Song>,
+        val artists: List<ArtistResult>,
+        val albums: List<ArtistAlbum>
+    )
+
+    /**
+     * Lagu, artis, dan album untuk [query], dimuat bersamaan. Gagal memuat artis atau album
+     * tidak membatalkan lagu.
+     */
+    private suspend fun fetchAll(query: String): Found = coroutineScope {
+        val songs = async { MusicRepository.search(query) }
+        val artists = async {
+            try {
+                MusicRepository.searchArtists(query)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
             }
-            songs.await() to artists.await()
         }
+        val albums = async {
+            try {
+                MusicRepository.searchAlbums(query)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+        Found(songs.await(), artists.await(), albums.await())
+    }
 
     /** Muat saran setelah pengguna berhenti mengetik sebentar, supaya tidak mencari tiap huruf. */
     private fun scheduleSuggestions(query: String) {
@@ -81,6 +104,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         if (query.isEmpty()) {
             suggestionsFor = null
             suggestionArtists = emptyList()
+            suggestionAlbums = emptyList()
             _state.update { it.copy(suggestions = emptyList(), suggestionsLoading = false) }
             return
         }
@@ -93,10 +117,11 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             delay(SUGGEST_DEBOUNCE_MS)
             _state.update { it.copy(suggestionsLoading = true) }
             try {
-                val (songs, artists) = fetchSongsAndArtists(query)
+                val found = fetchAll(query)
                 suggestionsFor = query
-                suggestionArtists = artists
-                _state.update { it.copy(suggestions = songs, suggestionsLoading = false) }
+                suggestionArtists = found.artists
+                suggestionAlbums = found.albums
+                _state.update { it.copy(suggestions = found.songs, suggestionsLoading = false) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -124,6 +149,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     results = it.suggestions,
                     artists = suggestionArtists,
+                    albums = suggestionAlbums,
                     isLoading = false,
                     error = null,
                     hasSearched = true,
@@ -136,16 +162,18 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         searchJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, error = null, suggestionsLoading = false) }
             try {
-                val (songs, artists) = fetchSongsAndArtists(query)
+                val found = fetchAll(query)
                 suggestionsFor = query
-                suggestionArtists = artists
+                suggestionArtists = found.artists
+                suggestionAlbums = found.albums
                 _state.update {
                     it.copy(
-                        results = songs,
-                        artists = artists,
+                        results = found.songs,
+                        artists = found.artists,
+                        albums = found.albums,
                         isLoading = false,
                         hasSearched = true,
-                        suggestions = songs
+                        suggestions = found.songs
                     )
                 }
             } catch (e: CancellationException) {
@@ -168,6 +196,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         suggestJob?.cancel()
         suggestionsFor = null
         suggestionArtists = emptyList()
+        suggestionAlbums = emptyList()
         _state.value = SearchUiState()
     }
 

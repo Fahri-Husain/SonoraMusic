@@ -88,7 +88,8 @@ fun ArtistScreen(
     isPlaying: Boolean,
     onBack: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onAlbumClick: (ArtistAlbum) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     // Backdrop lokal: hanya daftar/hero yang jadi sumber blur, bar kaca ada di luarnya
@@ -160,7 +161,7 @@ fun ArtistScreen(
                             horizontalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
                             itemsIndexed(state.albums, key = { index, album -> "$index-${album.url}" }) { _, album ->
-                                AlbumTile(album)
+                                AlbumTile(album, onClick = { onAlbumClick(album) })
                             }
                         }
                     }
@@ -471,9 +472,14 @@ private fun PopularSongRow(
 }
 
 @Composable
-private fun AlbumTile(album: ArtistAlbum) {
+private fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
-    Column(modifier = Modifier.width(140.dp)) {
+    Column(
+        modifier = Modifier
+            .width(140.dp)
+            .clip(shape)
+            .clickable(onClick = onClick)
+    ) {
         AsyncImage(
             model = album.coverUrl,
             contentDescription = null,
