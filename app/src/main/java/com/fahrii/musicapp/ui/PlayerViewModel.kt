@@ -66,7 +66,24 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             if (item.mediaId == lastRecordedId) return
             lastRecordedId = item.mediaId
             history.record(item.toSong())
-            replay.recordPlay(item.toSong())
+            replay.onSongStarted(item.toSong())
+        }
+
+        // Replay: 1 play dihitung hanya kalau lagunya sampai habis. Lanjut otomatis ke lagu
+        // berikutnya, atau lagu yang sama diulang (mode ulang satu lagu), berarti lagu sebelumnya
+        // selesai. Ganti lagu manual (next/previous/pilih lagu lain) memakai alasan lain, jadi
+        // tidak dihitung.
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
+            ) {
+                replay.songCompleted()
+            }
+        }
+
+        // Lagu terakhir di antrian selesai (tanpa mode ulang): tidak ada transisi, hanya STATE_ENDED
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackState == Player.STATE_ENDED) replay.songCompleted()
         }
     }
 
@@ -105,7 +122,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                         PlaybackProgress(c.currentPosition, c.duration.coerceAtLeast(0L))
                     }
                     // Waktu dengar untuk Replay
-                    c.currentMediaItem?.let { replay.addListening(it.toSong(), 500L) }
+                    c.currentMediaItem?.let {
+                        replay.addListening(it.toSong(), 500L, c.duration.coerceAtLeast(0L))
+                    }
                 }
                 delay(500)
             }
@@ -121,7 +140,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         // Lagu yang ditekan langsung masuk riwayat; listener di bawah tidak mencatatnya lagi
         lastRecordedId = songs[index].url
         history.record(songs[index])
-        replay.recordPlay(songs[index])
+        replay.onSongStarted(songs[index])
 
         _state.update {
             it.copy(currentSong = songs[index], isBuffering = true, error = null, sourceLabel = source)

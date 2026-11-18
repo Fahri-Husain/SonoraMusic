@@ -32,6 +32,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -129,6 +130,10 @@ fun AppRoot(
     // Tinggi bar mengambang diukur, supaya daftar bisa di-scroll sampai tidak ketutup
     val density = LocalDensity.current
     var barHeightPx by remember { mutableIntStateOf(0) }
+    // Bar bawah di halaman Cari: false = ringkas (bulatan cari + mini player),
+    // true = navbar penuh seperti di Beranda. Selalu kembali ringkas saat berpindah halaman.
+    var searchBarExpanded by remember { mutableStateOf(false) }
+    LaunchedEffect(route) { searchBarExpanded = false }
     val bottomInset = if (onPlayerScreen) 0.dp else with(density) { barHeightPx.toDp() }
 
     fun openSearch(query: String) {
@@ -215,7 +220,8 @@ fun AppRoot(
                                 onSongClick = { songs, index ->
                                     val q = searchViewModel.state.value.query.trim()
                                     playerViewModel.playQueue(songs, index, if (q.isNotEmpty()) "Pencarian \"$q\"" else "Pencarian")
-                                }
+                                },
+                                onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") }
                             )
                         }
                     }
@@ -414,31 +420,36 @@ fun AppRoot(
                 enter = slideInVertically(tween(350, easing = FastOutSlowInEasing)) { it / 2 } + fadeIn(tween(300)),
                 exit = fadeOut(tween(150))
             ) {
-                Column(
+                SonoraBottomBars(
+                    selected = currentTab,
+                    // Halaman Cari: bar ringkas (bulatan cari di kiri, mini player di kanannya).
+                    // Ketuk bulatan cari lagi untuk memunculkan navbar + mini player seperti di Beranda.
+                    compact = route == ROUTE_SEARCH && !searchBarExpanded,
+                    playerState = playerState,
+                    backdrop = backdrop,
+                    onSelect = { tab ->
+                        navController.navigateToTab(
+                            when (tab) {
+                                BottomTab.HOME -> ROUTE_HOME
+                                BottomTab.COLLECTION -> ROUTE_LIBRARY
+                                BottomTab.SEARCH -> ROUTE_SEARCH
+                            }
+                        )
+                    },
+                    onSearchClick = {
+                        if (route == ROUTE_SEARCH) {
+                            // Sudah di halaman Cari: bolak-balik antara bar ringkas dan bar penuh
+                            searchBarExpanded = !searchBarExpanded
+                        } else {
+                            navController.navigateToTab(ROUTE_SEARCH)
+                        }
+                    },
+                    onToggle = playerViewModel::togglePlayPause,
+                    onPlayerClick = {
+                        navController.navigate(ROUTE_PLAYER) { launchSingleTop = true }
+                    },
                     modifier = Modifier.onSizeChanged { barHeightPx = it.height }
-                ) {
-                    MiniPlayer(
-                        state = playerState,
-                        backdrop = backdrop,
-                        onToggle = playerViewModel::togglePlayPause,
-                        onClick = {
-                            navController.navigate(ROUTE_PLAYER) { launchSingleTop = true }
-                        }
-                    )
-                    SonoraBottomBar(
-                        selected = currentTab,
-                        backdrop = backdrop,
-                        onSelect = { tab ->
-                            navController.navigateToTab(
-                                when (tab) {
-                                    BottomTab.HOME -> ROUTE_HOME
-                                    BottomTab.COLLECTION -> ROUTE_LIBRARY
-                                    BottomTab.SEARCH -> ROUTE_SEARCH
-                                }
-                            )
-                        }
-                    )
-                }
+                )
             }
         }
     }

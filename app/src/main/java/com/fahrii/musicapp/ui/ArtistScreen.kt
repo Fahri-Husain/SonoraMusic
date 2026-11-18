@@ -42,20 +42,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.util.lerp
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.Song
@@ -67,6 +71,11 @@ private const val HERO_GRAYSCALE = false
 private val HeroImageHeight = 420.dp
 private val BioColor = Color(0xFFD0D0D5)
 private val GrayFilter = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
+
+/** Bayangan tipis supaya teks kecil di atas foto tetap terbaca walau fotonya terang. */
+private val HeroTextShadow = TextStyle(
+    shadow = Shadow(color = Color.Black.copy(alpha = 0.65f), offset = Offset(0f, 2f), blurRadius = 8f)
+)
 
 /**
  * Halaman artis: foto besar + nama + bio, tombol Listen/About, daftar lagu populer,
@@ -246,6 +255,13 @@ private fun ArtistHero(
     onListen: () -> Unit,
     onTitleBottom: (Float) -> Unit
 ) {
+    // 0f = bio ringkas, 1f = bio terbuka (About diklik): foto digelapkan lebih awal dan lebih pekat
+    val dim by animateFloatAsState(
+        targetValue = if (bioExpanded) 1f else 0f,
+        animationSpec = tween(250),
+        label = "heroDim"
+    )
+
     Box(modifier = Modifier.fillMaxWidth().heightIn(min = HeroImageHeight)) {
         if (state.imageUrl != null) {
             AsyncImage(
@@ -264,7 +280,8 @@ private fun ArtistHero(
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Black.copy(alpha = 0.30f),
-                        0.40f to Color.Transparent,
+                        lerp(0.30f, 0.12f, dim) to Sonora.Background.copy(alpha = 0.40f * dim),
+                        lerp(0.55f, 0.38f, dim) to Sonora.Background.copy(alpha = lerp(0.55f, 0.88f, dim)),
                         0.95f to Sonora.Background
                     )
                 )
@@ -282,7 +299,8 @@ private fun ArtistHero(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.5.sp,
-                color = Sonora.TextSecondary
+                color = Sonora.TextSecondary,
+                style = HeroTextShadow
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -297,7 +315,8 @@ private fun ArtistHero(
                 Text(
                     text = "${compactCount(state.subscribers)} subscribers",
                     fontSize = 13.sp,
-                    color = Sonora.TextSecondary
+                    color = Sonora.TextSecondary,
+                    style = HeroTextShadow
                 )
             }
             if (state.bio != null) {
@@ -307,6 +326,7 @@ private fun ArtistHero(
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     color = BioColor,
+                    style = HeroTextShadow,
                     maxLines = if (bioExpanded) Int.MAX_VALUE else 3,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -340,8 +360,13 @@ private fun ArtistPill(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val background = if (filled) Color.White else Color.White.copy(alpha = 0.08f)
-    val content = if (filled) Color.Black else Color.White
+    // Redup saat disabled lewat warna, bukan Modifier.alpha(): alpha() menambah/membuang graphics
+    // layer saat `enabled` berubah (mis. lagu selesai dimuat), dan itu membuat background + border
+    // pill tidak tergambar sampai layar dibuka ulang.
+    val fade = if (enabled) 1f else 0.4f
+    val background = if (filled) Color.White.copy(alpha = fade) else Color.White.copy(alpha = 0.08f * fade)
+    val content = (if (filled) Color.Black else Color.White).copy(alpha = fade)
+    val borderColor = Color.White.copy(alpha = 0.25f * fade)
 
     Row(
         modifier = Modifier
@@ -351,9 +376,8 @@ private fun ArtistPill(
             .background(background)
             .then(
                 if (filled) Modifier
-                else Modifier.border(1.dp, Color.White.copy(alpha = 0.25f), CircleShape)
+                else Modifier.border(1.dp, borderColor, CircleShape)
             )
-            .alpha(if (enabled) 1f else 0.4f)
             .clickable(enabled = enabled, onClick = onClick),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically

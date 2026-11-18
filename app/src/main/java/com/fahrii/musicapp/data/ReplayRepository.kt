@@ -36,8 +36,9 @@ data class MonthStats(
 
 /**
  * Statistik dengar per bulan untuk layar Replay. Kunci bulan berformat "2026-03".
- * Jumlah play bertambah tiap lagu mulai diputar; waktu dengar dikumpulkan sambil lagu
- * berjalan dan dijumlahkan dari semua lagu dalam satu bulan.
+ * Jumlah play bertambah hanya saat sebuah lagu selesai diputar sampai habis (salah ketuk atau
+ * di-skip tidak dihitung); waktu dengar dikumpulkan sambil lagu berjalan dan dijumlahkan dari
+ * semua lagu dalam satu bulan.
  */
 class ReplayRepository private constructor(context: Context) {
 
@@ -52,21 +53,54 @@ class ReplayRepository private constructor(context: Context) {
     // Waktu dengar ditampung dulu supaya tidak memicu update tiap 0,5 detik
     private var pendingSong: Song? = null
     private var pendingMs = 0L
-    private var lastStartedUrl: String? = null
 
-    /** Lagu mulai diputar (ditekan atau lanjut otomatis): tambah 1 play. */
-    fun recordPlay(song: Song) {
+    // Lagu yang sedang diputar dan berapa lama sudah didengar sejak mulai (atau sejak ulangan
+    // terakhir). Dipakai untuk memutuskan apakah lagu itu benar-benar selesai didengarkan.
+    private var currentSong: Song? = null
+    private var currentListenedMs = 0L
+    private var currentDurationMs = 0L
+
+    /**
+     * Lagu mulai diputar (ditekan atau lanjut otomatis). Belum menambah play: play baru dihitung
+     * di [songCompleted] saat lagunya selesai.
+     */
+    fun onSongStarted(song: Song) {
         flush()
-        lastStartedUrl = song.url
+        currentSong = song
+        currentListenedMs = 0L
+        currentDurationMs = 0L
+    }
+
+    /**
+     * Lagu yang sedang diputar sudah sampai habis (lanjut otomatis ke lagu berikutnya, diulang,
+     * atau antrian selesai): tambah 1 play. Kalau lagunya hanya di-seek ke ujung dan ditonton
+     * sebentar (kurang dari separuh durasi), tidak dihitung.
+     */
+    fun songCompleted() {
+        val song = currentSong ?: return
+        flush()
+
+        val enough = if (currentDurationMs > 0) {
+            currentListenedMs >= currentDurationMs / 2
+        } else {
+            currentListenedMs >= MIN_LISTEN_WITHOUT_DURATION_MS
+        }
+        // Siap untuk putaran berikutnya (mis. mode ulang satu lagu); juga mencegah dihitung dua kali
+        currentListenedMs = 0L
+        if (!enough) return
+
         bump(song, plays = 1, ms = 0L)
         saveNow()
     }
 
-    fun addListening(song: Song, ms: Long) {
-        // Jaga-jaga kalau lagu berganti otomatis tanpa tercatat sebagai play
-        if (lastStartedUrl != song.url) recordPlay(song)
-        val current = pendingSong
-        if (current != null && current.url != song.url) flush()
+    fun addListening(song: Song, ms: Long, durationMs: Long = 0L) {
+        // Lagu berganti tanpa lewat onSongStarted (mis. lanjut otomatis): mulai sesi baru
+        if (currentSong?.url != song.url) onSongStarted(song)
+        if (durationMs > 0) currentDurationMs = durationMs
+        currentListenedMs += ms
+
+        val pending = pendingSong
+        if (pending != null && pending.url != song.url) flush()
         pendingSong = song
         pendingMs += ms
         if (pendingMs >= FLUSH_EVERY_MS) flush()
@@ -225,6 +259,9 @@ class ReplayRepository private constructor(context: Context) {
     companion object {
         private const val FLUSH_EVERY_MS = 5_000L
         private const val SAVE_DELAY_MS = 15_000L
+
+        /** Kalau durasi lagu tidak diketahui, lagu dianggap selesai didengar setelah selama ini. */
+        private const val MIN_LISTEN_WITHOUT_DURATION_MS = 30_000L
 
         @Volatile
         private var instance: ReplayRepository? = null

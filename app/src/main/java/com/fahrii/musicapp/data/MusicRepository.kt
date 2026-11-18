@@ -6,6 +6,7 @@ import org.schabi.newpipe.extractor.NewPipe
 import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.channel.ChannelInfo
 import org.schabi.newpipe.extractor.channel.ChannelInfoItem
+import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.playlist.PlaylistInfoItem
 import org.schabi.newpipe.extractor.services.youtube.linkHandler.YoutubeSearchQueryHandlerFactory
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
@@ -22,6 +23,12 @@ data class ArtistProfile(
     val subscribers: Long
 )
 
+/** Artis di hasil pencarian: nama + foto profil. */
+data class ArtistResult(
+    val name: String,
+    val imageUrl: String?
+)
+
 data class ArtistAlbum(
     val title: String,
     val artist: String,
@@ -29,7 +36,17 @@ data class ArtistAlbum(
     val url: String
 )
 
+/** Album lengkap: sampul dan semua lagunya sesuai urutan tracklist. */
+data class AlbumTracks(
+    val title: String,
+    val artist: String,
+    val coverUrl: String?,
+    val songs: List<Song>
+)
+
 object MusicRepository {
+
+    private val albumCache = ConcurrentHashMap<String, AlbumTracks>()
 
     private const val URL_TTL_MS = 20 * 60 * 1000L
 
@@ -82,6 +99,30 @@ object MusicRepository {
                 )
             }
     }
+
+    /** Artis yang cocok dengan [query] (pencarian artis YouTube Music), beserta foto profilnya. */
+    suspend fun searchArtists(query: String, limit: Int = 3): List<ArtistResult> =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+
+            val extractor = ServiceList.YouTube.getSearchExtractor(
+                query,
+                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ARTISTS),
+                ""
+            )
+            extractor.fetchPage()
+
+            extractor.initialPage.items
+                .filterIsInstance<ChannelInfoItem>()
+                .map { item ->
+                    ArtistResult(
+                        name = item.name,
+                        imageUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url)
+                    )
+                }
+                .distinctBy { it.name.lowercase() }
+                .take(limit)
+        }
 
     /**
      * Cari foto profil artis di YouTube Music (fallback: pencarian channel biasa).
@@ -177,6 +218,64 @@ object MusicRepository {
                 }
                 .distinctBy { it.title.lowercase() }
                 .take(limit)
+        }
+
+    /**
+     * Tracklist lengkap sebuah album: cari album di YouTube Music dari [title] + [artist],
+     * lalu ambil semua lagunya. Null kalau albumnya tidak ketemu. Hasilnya di-cache selama
+     * aplikasi hidup.
+     */
+    suspend fun findAlbumTracks(title: String, artist: String): AlbumTracks? =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+
+            val cacheKey = title.trim().lowercase() + "|" + artist.trim().lowercase()
+            albumCache[cacheKey]?.let { return@withContext it }
+
+            val extractor = ServiceList.YouTube.getSearchExtractor(
+                "$title $artist",
+                listOf(YoutubeSearchQueryHandlerFactory.MUSIC_ALBUMS),
+                ""
+            )
+            extractor.fetchPage()
+            val items = extractor.initialPage.items.filterIsInstance<PlaylistInfoItem>()
+
+            fun sameTitle(it: PlaylistInfoItem) = it.name.trim().equals(title.trim(), ignoreCase = true)
+            fun sameArtist(it: PlaylistInfoItem) =
+                it.uploaderName?.contains(artist, ignoreCase = true) == true
+
+            val best = items.firstOrNull { sameTitle(it) && sameArtist(it) }
+                ?: items.firstOrNull { sameTitle(it) }
+                ?: return@withContext null
+
+            val info = PlaylistInfo.getInfo(ServiceList.YouTube, best.url)
+            val streams = info.relatedItems.filterIsInstance<StreamInfoItem>().toMutableList()
+            var page = info.nextPage
+            var guard = 0
+            while (page != null && guard++ < 3) {
+                val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, best.url, page)
+                streams += more.items.filterIsInstance<StreamInfoItem>()
+                page = more.nextPage
+            }
+            if (streams.isEmpty()) return@withContext null
+
+            val cover = hdThumbnail(best.thumbnails.lastOrNull()?.url)
+            val result = AlbumTracks(
+                title = best.name,
+                artist = best.uploaderName?.takeIf { it.isNotBlank() } ?: artist,
+                coverUrl = cover,
+                songs = streams.map { item ->
+                    Song(
+                        url = item.url,
+                        title = item.name,
+                        artist = item.uploaderName?.takeIf { it.isNotBlank() } ?: artist,
+                        thumbnailUrl = cover ?: hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                        durationSeconds = item.duration
+                    )
+                }
+            )
+            albumCache[cacheKey] = result
+            result
         }
 
     /**
