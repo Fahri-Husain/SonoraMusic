@@ -13,6 +13,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.fahrii.musicapp.data.MusicRepository
+import com.fahrii.musicapp.data.SettingsRepository
 import java.io.IOException
 import androidx.media3.datasource.DefaultHttpDataSource
 
@@ -20,6 +21,7 @@ import androidx.media3.datasource.DefaultHttpDataSource
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+    private var crossfade: CrossfadeManager? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -73,6 +75,9 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         mediaSession = MediaSession.Builder(this, player).build()
+
+        // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
+        crossfade = CrossfadeManager(this, player, dataSourceFactory, SettingsRepository.getInstance(this))
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
@@ -83,6 +88,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        crossfade?.release()
+        crossfade = null
         mediaSession?.run {
             player.release()
             release()

@@ -74,6 +74,12 @@ class HistoryRepository private constructor(context: Context) {
         persistSongs()
     }
 
+    /** Kosongkan riwayat lagu (Riwayat dan Paling Sering Diputar). Statistik Replay tidak ikut terhapus. */
+    fun clearSongs() {
+        _songs.value = emptyList()
+        persistSongs()
+    }
+
     private fun recordArtist(song: Song) {
         val name = song.artist.trim()
         if (name.isEmpty() || name == "Unknown artist") return

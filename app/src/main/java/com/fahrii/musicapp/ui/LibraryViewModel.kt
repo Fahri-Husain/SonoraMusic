@@ -43,6 +43,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeFromHistory(songUrl: String) = historyRepo.removeSong(songUrl)
 
+    fun clearPlayHistory() = historyRepo.clearSongs()
+
     fun toggleLike(song: Song) = repo.toggleLike(song)
 
     fun createPlaylist(name: String, firstSong: Song? = null) =

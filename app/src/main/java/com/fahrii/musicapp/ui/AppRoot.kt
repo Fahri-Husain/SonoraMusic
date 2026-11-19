@@ -76,6 +76,7 @@ private const val ROUTE_NEW_RELEASES = "new_releases"
 private const val ROUTE_TRENDING = "trending"
 private const val ROUTE_GENRE = "genre?name={name}&query={query}&accent={accent}"
 private const val ROUTE_GENRE_SONGS = "genre_songs"
+private const val ROUTE_SETTINGS = "settings"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
 internal const val TAB_SLIDE_MS = 350
@@ -450,6 +451,23 @@ fun AppRoot(
                         }
                     }
 
+                    composable(ROUTE_SETTINGS) {
+                        val settingsViewModel: SettingsViewModel = viewModel()
+                        val crossfadeEnabled by settingsViewModel.crossfadeEnabled.collectAsState()
+                        val crossfadeSeconds by settingsViewModel.crossfadeSeconds.collectAsState()
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            SettingsScreen(
+                                onBack = { navController.popBackStack() },
+                                crossfadeEnabled = crossfadeEnabled,
+                                crossfadeSeconds = crossfadeSeconds,
+                                onCrossfadeEnabledChange = settingsViewModel::setCrossfadeEnabled,
+                                onCrossfadeSecondsChange = settingsViewModel::setCrossfadeSeconds,
+                                onClearSearchHistory = searchViewModel::clearHistory,
+                                onClearPlayHistory = libraryViewModel::clearPlayHistory
+                            )
+                        }
+                    }
+
                     composable(ROUTE_LIKED) {
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             CollectionListScreen(
@@ -553,7 +571,7 @@ fun AppRoot(
                     )
                     HomeHeader(
                         onHistoryClick = {},
-                        onSettingsClick = {},
+                        onSettingsClick = { navController.navigate(ROUTE_SETTINGS) },
                         modifier = Modifier.statusBarsPadding()
                     )
                 }

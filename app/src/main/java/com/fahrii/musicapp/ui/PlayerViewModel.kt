@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.fahrii.musicapp.data.HistoryRepository
 import com.fahrii.musicapp.data.ReplayRepository
+import com.fahrii.musicapp.data.SettingsRepository
 
 data class PlayerUiState(
     val currentSong: Song? = null,
@@ -34,6 +35,9 @@ data class PlayerUiState(
     /** Dari mana lagu diputar, mis. Playlist "my gweh". */
     val sourceLabel: String? = null
 )
+
+/** Kelonggaran tambahan untuk mengenali transisi crossfade (posisi terakhir bisa basi sampai 0,5 detik). */
+private const val CROSSFADE_SLACK_MS = 2_000L
 
 data class PlaybackProgress(
     val positionMs: Long = 0L,
@@ -78,6 +82,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT
             ) {
                 replay.songCompleted()
+                return
+            }
+
+            // Crossfade memindahkan lagu lewat seek beberapa detik sebelum lagu lama habis, jadi
+            // alasannya SEEK, bukan AUTO. Lagu lama dianggap selesai, dan lagu baru dicatat di sini
+            // karena status "sedang memutar" tidak berubah saat crossfade (tidak ada jeda).
+            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK && mediaItem != null && endedByCrossfade()) {
+                replay.songCompleted()
+                if (mediaItem.mediaId != lastRecordedId) {
+                    lastRecordedId = mediaItem.mediaId
+                    history.record(mediaItem.toSong())
+                    replay.onSongStarted(mediaItem.toSong())
+                }
             }
         }
 
@@ -89,7 +106,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private val history = HistoryRepository.getInstance(app)
     private val replay = ReplayRepository.getInstance(app)
+    private val settings = SettingsRepository.getInstance(app)
     private var lastRecordedId: String? = null
+
+    /**
+     * True kalau lagu sebelumnya baru saja diakhiri oleh crossfade: posisi terakhirnya berada di
+     * dalam jendela crossfade dari ujung lagu. Posisi dibaca dari [_progress], yang belum diperbarui
+     * ke lagu baru saat callback transisi ini dipanggil (selisihnya paling lama 0,5 detik).
+     */
+    private fun endedByCrossfade(): Boolean {
+        val crossfadeMs = settings.crossfadeMs()
+        if (crossfadeMs <= 0L) return false
+        val p = _progress.value
+        return p.durationMs > 0L && p.durationMs - p.positionMs <= crossfadeMs + CROSSFADE_SLACK_MS
+    }
 
     private val controllerFuture = MediaController.Builder(
         app,
