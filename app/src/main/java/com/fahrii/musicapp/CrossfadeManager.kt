@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -66,10 +67,14 @@ class CrossfadeManager(
     // Selisih posisi (pemutar kedua dikurangi pemutar utama) selama SYNC, dihaluskan
     private var offsetAvgMs = 0f
     private var offsetSamples = 0
-    private var resyncUsed = false
+    private var resyncCount = 0
 
     // Lama crossfade yang berlaku untuk lagu ini
     private var currentFadeMs = 0L
+
+    // Untuk log: pesan terakhir (supaya tidak dobel tiap tick) dan kapan pemutar kedua terakhir disiapkan
+    private var lastNote = ""
+    private var lastPrepareAtMs = 0L
 
     private var phase = Phase.IDLE
     private val fading: Boolean get() = phase == Phase.FADING
@@ -166,10 +171,26 @@ class CrossfadeManager(
     private fun isOwnEvent(): Boolean =
         selfSeeking || (fading && SystemClock.elapsedRealtime() - fadeStartedAtMs < OWN_EVENT_WINDOW_MS)
 
+    /** Catat alasan keputusan ke logcat (tag Crossfade); pesan yang sama berturut-turut dicatat sekali. */
+    private fun note(msg: String) {
+        if (msg == lastNote) return
+        lastNote = msg
+        Log.d(TAG, msg)
+    }
+
+    private fun skipReason(item: MediaItem?, duration: Long): String = when {
+        item == null -> "tidak ada lagu"
+        duration == C.TIME_UNSET || duration <= 0L -> "durasi belum diketahui"
+        player.isCurrentMediaItemLive -> "stream live"
+        player.repeatMode == Player.REPEAT_MODE_ONE -> "ulang satu lagu"
+        !player.hasNextMediaItem() -> "tidak ada lagu berikutnya"
+        else -> "tidak diketahui"
+    }
+
     private fun interrupted() {
         when (phase) {
             Phase.FADING -> finishFade()
-            Phase.SYNC, Phase.HANDOFF -> abortSync()
+            Phase.SYNC, Phase.HANDOFF -> abortSync("dibatalkan pengguna (next/seek)")
             Phase.IDLE -> releaseTail()
         }
     }
@@ -192,13 +213,18 @@ class CrossfadeManager(
                 player.repeatMode != Player.REPEAT_MODE_ONE &&
                 player.hasNextMediaItem()
         if (!eligible || item == null) {
+            if (crossfadeMs > 0L && player.isPlaying) {
+                note("[${item?.mediaId}] dilewati: ${skipReason(item, duration)}")
+            }
             releaseTail()
             return
         }
+        val id = item.mediaId
 
         // Lagu pendek: crossfade tidak boleh lebih dari sepertiga lagu
         val fadeMs = minOf(crossfadeMs, duration / 3)
         if (fadeMs < MIN_FADE_MS) {
+            note("[$id] dilewati: lagu terlalu pendek")
             releaseTail()
             return
         }
@@ -212,18 +238,38 @@ class CrossfadeManager(
             // Masih jauh dari ujung lagu
             remaining > syncAtRemaining + PREPARE_AHEAD_MS -> releaseTail()
 
-            // Sudah dekat: siapkan pemutar kedua (sekali) supaya siap saat waktunya tiba
-            remaining > syncAtRemaining ->
-                if (tail == null) prepareTail(item, duration - syncAtRemaining)
+            // Sudah dekat: siapkan pemutar kedua supaya siap saat waktunya tiba. Kalau pemutar
+            // kedua gagal (mis. error jaringan), coba lagi dengan jeda, selama masih ada waktu.
+            remaining > syncAtRemaining -> {
+                tail?.playerError?.let {
+                    note("[$id] pemutar kedua error: ${it.errorCodeName}, akan dicoba ulang")
+                    releaseTail()
+                }
+                if (tail == null &&
+                    SystemClock.elapsedRealtime() - lastPrepareAtMs > RETRY_PREPARE_MS
+                ) {
+                    note("[$id] menyiapkan pemutar kedua (sisa ${remaining / 1000}s)")
+                    prepareTail(item, duration - syncAtRemaining)
+                }
+            }
 
             // Terlalu dekat ke ujung lagu: tidak jadi crossfade
-            remaining <= MIN_START_REMAINING_MS -> releaseTail()
+            remaining <= MIN_START_REMAINING_MS -> {
+                note("[$id] dilewati: pemutar kedua belum siap sampai lagu hampir habis")
+                releaseTail()
+            }
 
             // Waktunya sinkronisasi, tapi hanya kalau pemutar kedua sudah siap; kalau tidak,
             // biarkan lagu berganti seperti biasa
             else -> {
-                val t = tail ?: return
-                if (t.playbackState != Player.STATE_READY) return
+                val t = tail ?: run {
+                    note("[$id] dilewati: pemutar kedua tidak ada saat waktunya tiba")
+                    return
+                }
+                if (t.playbackState != Player.STATE_READY) {
+                    note("[$id] menunggu pemutar kedua siap (state=${t.playbackState})")
+                    return
+                }
                 val lateBy = player.currentPosition - tailTriggerPosMs
                 when {
                     lateBy < 0L -> Unit // belum sampai titiknya
@@ -254,6 +300,7 @@ class CrossfadeManager(
         p.prepare()
         tail = p
         tailMediaId = item.mediaId
+        lastPrepareAtMs = SystemClock.elapsedRealtime()
         tailTriggerPosMs = triggerPosMs
     }
 
@@ -270,7 +317,7 @@ class CrossfadeManager(
         tailPlayStartPosMs = t.currentPosition
         offsetAvgMs = 0f
         offsetSamples = 0
-        resyncUsed = false
+        resyncCount = 0
         t.playWhenReady = player.playWhenReady
         phase = Phase.SYNC
         phaseStartedAtMs = SystemClock.elapsedRealtime()
@@ -282,12 +329,15 @@ class CrossfadeManager(
         if (t == null || item == null || item.mediaId != tailMediaId ||
             !player.hasNextMediaItem() || player.repeatMode == Player.REPEAT_MODE_ONE
         ) {
-            abortSync()
+            abortSync("antrean/mode ulang berubah saat sinkronisasi")
             return
         }
         val now = SystemClock.elapsedRealtime()
         if (now - phaseStartedAtMs > SYNC_TIMEOUT_MS) {
-            abortSync()
+            abortSync(
+                "sinkronisasi kehabisan waktu (tailPlaying=${t.isPlaying}, " +
+                        "jalan=${t.currentPosition - tailPlayStartPosMs}ms, sampel=$offsetSamples)"
+            )
             return
         }
 
@@ -307,12 +357,14 @@ class CrossfadeManager(
 
         when {
             abs(offsetAvgMs) <= ALIGN_TOLERANCE_MS -> {
+                Log.d(TAG, "[${item.mediaId}] sinkron: selisih=${offsetAvgMs.toInt()}ms, kompensasi=${tailCompensationMs.toInt()}ms")
                 phase = Phase.HANDOFF
                 phaseStartedAtMs = now
             }
             // Belum sejajar: geser pemutar kedua sekali lagi memakai jeda yang baru terukur
-            !resyncUsed && abs(offsetAvgMs) <= RESYNC_MAX_OFFSET_MS -> {
-                resyncUsed = true
+            resyncCount < MAX_RESYNC && abs(offsetAvgMs) <= RESYNC_MAX_OFFSET_MS -> {
+                resyncCount++
+                Log.d(TAG, "[${item.mediaId}] geser ulang #$resyncCount: selisih=${offsetAvgMs.toInt()}ms")
                 // Putaran kedua mengukur terhadap jeda yang baru dipakai ini
                 tailCompUsedMs = measuredDelayMs.coerceAtLeast(0f)
                 val target = player.currentPosition + tailCompUsedMs.toLong()
@@ -321,7 +373,7 @@ class CrossfadeManager(
                 offsetSamples = 0
             }
             // Tetap tidak sejajar: lebih baik berganti lagu biasa daripada terdengar dobel
-            else -> abortSync()
+            else -> abortSync("selisih posisi terlalu besar (${offsetAvgMs.toInt()}ms)")
         }
     }
 
@@ -335,7 +387,7 @@ class CrossfadeManager(
     private fun stepHandoff() {
         val t = tail
         if (t == null) {
-            abortSync()
+            abortSync("pemutar kedua hilang saat handoff")
             return
         }
         // Isi kedua pemutar sama, jadi ramp linier menjaga level tetap rata
@@ -346,7 +398,8 @@ class CrossfadeManager(
         if (x >= 1f) beginFade(t)
     }
 
-    private fun abortSync() {
+    private fun abortSync(reason: String) {
+        Log.d(TAG, "crossfade dibatalkan, lagu pindah biasa: $reason")
         phase = Phase.IDLE
         player.volume = 1f
         releaseTail()
@@ -357,7 +410,7 @@ class CrossfadeManager(
     private fun beginFade(t: ExoPlayer) {
         val duration = player.duration
         if (duration == C.TIME_UNSET || duration <= 0L) {
-            abortSync()
+            abortSync("durasi hilang saat fade akan mulai")
             return
         }
         val now = SystemClock.elapsedRealtime()
@@ -377,6 +430,7 @@ class CrossfadeManager(
         phase = Phase.FADING
         // Panjang fade sesuai pengaturan (tidak lebih panjang walau sinkronisasi dimulai lebih awal)
         fadeDurationMs = remaining.coerceAtMost(currentFadeMs.coerceAtLeast(MIN_REMAINING_MS))
+        Log.d(TAG, "fade mulai: ${fadeDurationMs}ms (sisa lagu lama ${remaining}ms)")
         outgoingStartMs = outgoingPos
         incomingStartMs = player.currentPosition
         incomingProgress = 0f
@@ -430,6 +484,7 @@ class CrossfadeManager(
     }
 
     private fun finishFade() {
+        Log.d(TAG, "fade selesai")
         phase = Phase.IDLE
         releaseTail()
         player.volume = 1f
@@ -442,7 +497,14 @@ class CrossfadeManager(
     }
 
     private companion object {
+        const val TAG = "Crossfade"
         const val POLL_MS = 200L
+
+        // Jeda minimal sebelum pemutar kedua yang gagal disiapkan ulang
+        const val RETRY_PREPARE_MS = 2_000L
+
+        // Berapa kali pemutar kedua boleh digeser ulang kalau belum sejajar
+        const val MAX_RESYNC = 2
         // ~60 langkah volume per detik; 50 ms (20/detik) terdengar bergelombang
         const val FAST_TICK_MS = 16L
 
@@ -450,7 +512,7 @@ class CrossfadeManager(
         const val SMOOTH_TAU_MS = 24f
 
         // Pemutar kedua mulai disiapkan sekian ms sebelum titik sinkronisasi
-        const val PREPARE_AHEAD_MS = 8_000L
+        const val PREPARE_AHEAD_MS = 15_000L
 
         // Crossfade lebih pendek dari ini tidak terdengar, jadi dilewati
         const val MIN_FADE_MS = 1_000L
@@ -462,7 +524,7 @@ class CrossfadeManager(
         const val MIN_REMAINING_MS = 600L
 
         // Sinkronisasi dimulai sekian ms sebelum fade (waktu bagi pemutar kedua untuk "panas")
-        const val SYNC_LEAD_MS = 1_100L
+        const val SYNC_LEAD_MS = 1_600L
 
         // Perkiraan jeda antara pemutar kedua dijalankan dan suaranya keluar. Pemutar kedua
         // dimulai sebesar ini lebih maju supaya sejajar dengan pemutar utama. Kalau masih terdengar
@@ -477,7 +539,7 @@ class CrossfadeManager(
         const val SYNC_MIN_SAMPLES = 5
 
         // Batas waktu menunggu pemutar kedua bersuara; lewat dari ini crossfade dibatalkan
-        const val SYNC_TIMEOUT_MS = 1_400L
+        const val SYNC_TIMEOUT_MS = 2_200L
 
         // Pemutar kedua siap lebih dari ini setelah titiknya: susul ulang
         const val MAX_SYNC_LATE_MS = 250L
