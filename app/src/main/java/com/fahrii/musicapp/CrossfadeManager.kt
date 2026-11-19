@@ -54,9 +54,22 @@ class CrossfadeManager(
     private var tail: ExoPlayer? = null
     private var tailMediaId: String? = null
 
-    // Posisi (ms) tempat pemutar kedua mulai bersuara, sudah termasuk TAIL_COMPENSATION_MS
-    private var tailStartMs = 0L
+    // Posisi pemutar utama (ms) saat pemutar kedua harus mulai dijalankan
+    private var tailTriggerPosMs = 0L
     private var tailPlayStartPosMs = 0L
+
+    // Kompensasi jeda start pemutar kedua. Dipelajari dari selisih yang terukur tiap lagu,
+    // karena jeda ini beda-beda antar perangkat dan antar format stream.
+    private var tailCompensationMs = TAIL_COMPENSATION_MS
+    private var tailCompUsedMs = TAIL_COMPENSATION_MS
+
+    // Selisih posisi (pemutar kedua dikurangi pemutar utama) selama SYNC, dihaluskan
+    private var offsetAvgMs = 0f
+    private var offsetSamples = 0
+    private var resyncUsed = false
+
+    // Lama crossfade yang berlaku untuk lagu ini
+    private var currentFadeMs = 0L
 
     private var phase = Phase.IDLE
     private val fading: Boolean get() = phase == Phase.FADING
@@ -189,6 +202,7 @@ class CrossfadeManager(
             releaseTail()
             return
         }
+        currentFadeMs = fadeMs
 
         if (tail != null && tailMediaId != item.mediaId) releaseTail()
 
@@ -200,7 +214,7 @@ class CrossfadeManager(
 
             // Sudah dekat: siapkan pemutar kedua (sekali) supaya siap saat waktunya tiba
             remaining > syncAtRemaining ->
-                if (tail == null) prepareTail(item, duration - syncAtRemaining + TAIL_COMPENSATION_MS)
+                if (tail == null) prepareTail(item, duration - syncAtRemaining)
 
             // Terlalu dekat ke ujung lagu: tidak jadi crossfade
             remaining <= MIN_START_REMAINING_MS -> releaseTail()
@@ -210,7 +224,7 @@ class CrossfadeManager(
             else -> {
                 val t = tail ?: return
                 if (t.playbackState != Player.STATE_READY) return
-                val lateBy = player.currentPosition - (tailStartMs - TAIL_COMPENSATION_MS)
+                val lateBy = player.currentPosition - tailTriggerPosMs
                 when {
                     lateBy < 0L -> Unit // belum sampai titiknya
                     lateBy > MAX_SYNC_LATE_MS -> reseekTail(t) // siap terlambat: susul ke posisi sekarang
@@ -220,7 +234,10 @@ class CrossfadeManager(
         }
     }
 
-    private fun prepareTail(item: MediaItem, startMs: Long) {
+    /** [triggerPosMs]: posisi pemutar utama saat pemutar kedua harus mulai dijalankan. */
+    private fun prepareTail(item: MediaItem, triggerPosMs: Long) {
+        tailCompUsedMs = tailCompensationMs
+        val startMs = triggerPosMs + tailCompUsedMs.toLong()
         val p = ExoPlayer.Builder(context)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
@@ -237,13 +254,13 @@ class CrossfadeManager(
         p.prepare()
         tail = p
         tailMediaId = item.mediaId
-        tailStartMs = startMs
+        tailTriggerPosMs = triggerPosMs
     }
 
     /** Pemutar kedua siap terlambat: pindahkan ke sedikit di depan posisi sekarang dan tunggu lagi. */
     private fun reseekTail(t: ExoPlayer) {
-        tailStartMs = player.currentPosition + RESEEK_AHEAD_MS
-        t.seekTo(tailStartMs)
+        tailTriggerPosMs = player.currentPosition + RESEEK_AHEAD_MS
+        t.seekTo(tailTriggerPosMs + tailCompUsedMs.toLong())
     }
 
     // ---- SYNC: pemutar kedua bersuara senyap, menyusul pemutar utama ----
@@ -251,6 +268,9 @@ class CrossfadeManager(
     private fun startSync(t: ExoPlayer) {
         t.volume = 0f
         tailPlayStartPosMs = t.currentPosition
+        offsetAvgMs = 0f
+        offsetSamples = 0
+        resyncUsed = false
         t.playWhenReady = player.playWhenReady
         phase = Phase.SYNC
         phaseStartedAtMs = SystemClock.elapsedRealtime()
@@ -271,17 +291,43 @@ class CrossfadeManager(
             return
         }
 
-        // Tunggu sampai pemutar kedua benar-benar bersuara (posisinya sudah bergerak)
+        // Tunggu sampai pemutar kedua benar-benar bersuara dan posisinya stabil
         if (!t.isPlaying || t.currentPosition - tailPlayStartPosMs < SYNC_MIN_RUN_MS) return
 
-        // Dua salinan harus berjalan hampir bersamaan; kalau melenceng jauh akan terdengar gema
-        if (abs(t.currentPosition - player.currentPosition) > MAX_SYNC_OFFSET_MS) {
-            abortSync()
-            return
-        }
+        // Selisih posisi dua salinan lagu lama (positif = pemutar kedua lebih maju). Kalau
+        // melenceng lebih dari puluhan ms, sebagian lagu terdengar dua kali (gema/dobel).
+        val offset = (t.currentPosition - player.currentPosition).toFloat()
+        offsetAvgMs = if (offsetSamples == 0) offset else offsetAvgMs * 0.7f + offset * 0.3f
+        offsetSamples++
+        if (offsetSamples < SYNC_MIN_SAMPLES) return
 
-        phase = Phase.HANDOFF
-        phaseStartedAtMs = now
+        // Jeda start pemutar kedua yang sebenarnya = kompensasi yang dipakai - selisih terukur
+        val measuredDelayMs = tailCompUsedMs - offsetAvgMs
+        learnCompensation(measuredDelayMs)
+
+        when {
+            abs(offsetAvgMs) <= ALIGN_TOLERANCE_MS -> {
+                phase = Phase.HANDOFF
+                phaseStartedAtMs = now
+            }
+            // Belum sejajar: geser pemutar kedua sekali lagi memakai jeda yang baru terukur
+            !resyncUsed && abs(offsetAvgMs) <= RESYNC_MAX_OFFSET_MS -> {
+                resyncUsed = true
+                // Putaran kedua mengukur terhadap jeda yang baru dipakai ini
+                tailCompUsedMs = measuredDelayMs.coerceAtLeast(0f)
+                val target = player.currentPosition + tailCompUsedMs.toLong()
+                t.seekTo(target)
+                tailPlayStartPosMs = target
+                offsetSamples = 0
+            }
+            // Tetap tidak sejajar: lebih baik berganti lagu biasa daripada terdengar dobel
+            else -> abortSync()
+        }
+    }
+
+    private fun learnCompensation(measuredDelayMs: Float) {
+        tailCompensationMs = (tailCompensationMs * 0.5f + measuredDelayMs * 0.5f)
+            .coerceIn(0f, MAX_COMPENSATION_MS)
     }
 
     // ---- HANDOFF: suara lagu lama pindah dari pemutar utama ke pemutar kedua ----
@@ -329,7 +375,8 @@ class CrossfadeManager(
         }
 
         phase = Phase.FADING
-        fadeDurationMs = remaining // sisa lagu lama: fade selesai tepat saat lagu lama habis
+        // Panjang fade sesuai pengaturan (tidak lebih panjang walau sinkronisasi dimulai lebih awal)
+        fadeDurationMs = remaining.coerceAtMost(currentFadeMs.coerceAtLeast(MIN_REMAINING_MS))
         outgoingStartMs = outgoingPos
         incomingStartMs = player.currentPosition
         incomingProgress = 0f
@@ -415,25 +462,31 @@ class CrossfadeManager(
         const val MIN_REMAINING_MS = 600L
 
         // Sinkronisasi dimulai sekian ms sebelum fade (waktu bagi pemutar kedua untuk "panas")
-        const val SYNC_LEAD_MS = 350L
+        const val SYNC_LEAD_MS = 1_100L
 
         // Perkiraan jeda antara pemutar kedua dijalankan dan suaranya keluar. Pemutar kedua
         // dimulai sebesar ini lebih maju supaya sejajar dengan pemutar utama. Kalau masih terdengar
         // gema tipis di awal crossfade, ubah nilai ini (mis. 20-80).
-        const val TAIL_COMPENSATION_MS = 40L
+        const val TAIL_COMPENSATION_MS = 40f
+        const val MAX_COMPENSATION_MS = 400f
 
         // Pemutar kedua harus sudah berjalan sekian ms sebelum suaranya diambil alih
-        const val SYNC_MIN_RUN_MS = 80L
+        const val SYNC_MIN_RUN_MS = 250L
+
+        // Jumlah pengukuran selisih posisi sebelum diambil keputusan
+        const val SYNC_MIN_SAMPLES = 5
 
         // Batas waktu menunggu pemutar kedua bersuara; lewat dari ini crossfade dibatalkan
-        const val SYNC_TIMEOUT_MS = 1_500L
+        const val SYNC_TIMEOUT_MS = 1_400L
 
         // Pemutar kedua siap lebih dari ini setelah titiknya: susul ulang
         const val MAX_SYNC_LATE_MS = 250L
         const val RESEEK_AHEAD_MS = 700L
 
-        // Selisih posisi maksimal dua salinan lagu lama sebelum suaranya dipindah
-        const val MAX_SYNC_OFFSET_MS = 200L
+        // Selisih posisi maksimal dua salinan lagu lama sebelum suaranya dipindah (di atas ini
+        // terdengar dobel); sampai RESYNC_MAX_OFFSET_MS masih dicoba digeser ulang
+        const val ALIGN_TOLERANCE_MS = 25f
+        const val RESYNC_MAX_OFFSET_MS = 600f
 
         // Lama ramp pemindahan suara lagu lama ke pemutar kedua
         const val HANDOFF_MS = 100L
