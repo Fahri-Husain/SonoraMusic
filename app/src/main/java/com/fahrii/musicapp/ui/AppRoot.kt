@@ -432,7 +432,7 @@ fun AppRoot(
 
                     composable(ROUTE_MOST_PLAYED) {
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                            SongListScreen(
+                            CollectionListScreen(
                                 title = "Paling Sering Diputar",
                                 songs = playHistory.sortedByDescending { it.plays }.map { it.song },
                                 onBack = { navController.popBackStack() },
@@ -449,8 +449,8 @@ fun AppRoot(
 
                     composable(ROUTE_LIKED) {
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                            SongListScreen(
-                                title = "Lagu yang disukai",
+                            CollectionListScreen(
+                                title = "Favorit",
                                 songs = library.liked,
                                 onBack = { navController.popBackStack() },
                                 onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Lagu yang disukai") },
