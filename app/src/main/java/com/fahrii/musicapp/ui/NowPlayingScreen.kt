@@ -65,6 +65,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -131,6 +132,10 @@ fun NowPlayingScreen(
 
     var isDragging by remember { mutableStateOf(false) }
     var dragValue by remember { mutableFloatStateOf(0f) }
+    // Durasi dikunci saat jari mulai menggeser. Durasi dari pemutar bisa berubah di tengah
+    // gesekan (beberapa stream awalnya hanya perkiraan), dan kalau dipakai langsung, posisi
+    // seek saat dilepas tidak lagi cocok dengan tempat thumb berada.
+    var dragDurationMs by remember { mutableLongStateOf(0L) }
 
     // null = sedang memuat, kosong = tidak ditemukan
     var lyrics by remember(song.url) { mutableStateOf<List<LyricLine>?>(null) }
@@ -154,8 +159,9 @@ fun NowPlayingScreen(
     } else {
         0f
     }
-    val shownPositionMs = if (isDragging) (dragValue * durationMs).toLong() else progress.positionMs
-    val remainingMs = if (durationMs > 0) (durationMs - shownPositionMs).coerceAtLeast(0L) else 0L
+    val shownDurationMs = if (isDragging) dragDurationMs else durationMs
+    val shownPositionMs = if (isDragging) (dragValue * dragDurationMs).toLong() else progress.positionMs
+    val remainingMs = if (shownDurationMs > 0) (shownDurationMs - shownPositionMs).coerceAtLeast(0L) else 0L
 
     val inactive = Sonora.TextSecondary
 
@@ -425,11 +431,12 @@ fun NowPlayingScreen(
                 value = sliderValue,
                 enabled = durationMs > 0,
                 onChange = {
+                    if (!isDragging) dragDurationMs = durationMs
                     isDragging = true
                     dragValue = it
                 },
                 onFinish = {
-                    viewModel.seekTo((dragValue * durationMs).toLong())
+                    if (isDragging) viewModel.seekTo((dragValue * dragDurationMs).toLong())
                     isDragging = false
                 }
             )
@@ -554,11 +561,12 @@ fun NowPlayingScreen(
                     value = sliderValue,
                     enabled = durationMs > 0,
                     onChange = {
+                        if (!isDragging) dragDurationMs = durationMs
                         isDragging = true
                         dragValue = it
                     },
                     onFinish = {
-                        viewModel.seekTo((dragValue * durationMs).toLong())
+                        if (isDragging) viewModel.seekTo((dragValue * dragDurationMs).toLong())
                         isDragging = false
                     }
                 )

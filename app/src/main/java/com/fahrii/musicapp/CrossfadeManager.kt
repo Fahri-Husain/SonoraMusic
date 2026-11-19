@@ -135,12 +135,12 @@ class CrossfadeManager(
         val duration = player.duration
 
         val eligible = crossfadeMs > 0L &&
-            item != null &&
-            duration != C.TIME_UNSET && duration > 0L &&
-            player.isPlaying &&
-            !player.isCurrentMediaItemLive &&
-            player.repeatMode != Player.REPEAT_MODE_ONE &&
-            player.hasNextMediaItem()
+                item != null &&
+                duration != C.TIME_UNSET && duration > 0L &&
+                player.isPlaying &&
+                !player.isCurrentMediaItemLive &&
+                player.repeatMode != Player.REPEAT_MODE_ONE &&
+                player.hasNextMediaItem()
         if (!eligible || item == null) {
             releaseTail()
             return
@@ -218,17 +218,41 @@ class CrossfadeManager(
 
     private fun stepFade() {
         val now = SystemClock.elapsedRealtime()
-        // Waktu fade hanya berjalan selagi pengguna tidak menjeda
-        if (player.playWhenReady) fadeElapsedMs += now - lastFadeTickMs
+        val dt = (now - lastFadeTickMs).coerceAtLeast(0L)
         lastFadeTickMs = now
 
-        val progress = (fadeElapsedMs.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
-        val angle = progress * HALF_PI
-        player.volume = sin(angle)
-        tail?.volume = cos(angle)
+        // Waktu fade hanya berjalan selagi pengguna tidak menjeda dan lagu baru benar-benar sudah
+        // terdengar. Kalau lagu baru masih memuat (stream belum siap), lagu lama tetap penuh
+        // supaya tidak ada celah senyap atau lagu baru yang muncul tiba-tiba di tengah fade.
+        val incomingReady = player.playbackState == Player.STATE_READY
 
-        if (progress >= 1f) finishFade()
+        // Lagu lama sudah habis sebelum lagu baru siap: tidak ada lagi yang perlu dipudarkan,
+        // langsung normal begitu lagu baru terdengar
+        if (incomingReady && tail?.playbackState == Player.STATE_ENDED) {
+            finishFade()
+            return
+        }
+        if (player.playWhenReady && incomingReady) fadeElapsedMs += dt
+
+        val linear = (fadeElapsedMs.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
+
+        // Smoothstep: awal dan akhir fade landai (tidak ada lonjakan volume di ujung kurva),
+        // lalu equal-power supaya total tenaga suara tetap rata di tengah.
+        val eased = linear * linear * (3f - 2f * linear)
+        val angle = eased * HALF_PI
+        val targetIn = sin(angle)
+        val targetOut = cos(angle)
+
+        // Volume dihaluskan per tick supaya tidak ada "tangga" yang terdengar
+        // (volume ExoPlayer diterapkan per buffer audio).
+        player.volume = smooth(player.volume, targetIn)
+        tail?.let { it.volume = smooth(it.volume, targetOut) }
+
+        if (linear >= 1f) finishFade()
     }
+
+    private fun smooth(current: Float, target: Float): Float =
+        current + (target - current) * VOLUME_SMOOTHING
 
     private fun finishFade() {
         fading = false
@@ -244,7 +268,11 @@ class CrossfadeManager(
 
     private companion object {
         const val POLL_MS = 200L
-        const val FADE_TICK_MS = 50L
+        // ~60 langkah volume per detik; 50 ms (20/detik) terdengar bergelombang
+        const val FADE_TICK_MS = 16L
+
+        // Seberapa cepat volume mengejar target tiap tick (0..1)
+        const val VOLUME_SMOOTHING = 0.5f
 
         // Pemutar kedua mulai disiapkan sekian ms sebelum titik crossfade
         const val PREPARE_AHEAD_MS = 8_000L

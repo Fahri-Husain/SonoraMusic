@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import android.os.SystemClock
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
@@ -38,6 +39,15 @@ data class PlayerUiState(
 
 /** Kelonggaran tambahan untuk mengenali transisi crossfade (posisi terakhir bisa basi sampai 0,5 detik). */
 private const val CROSSFADE_SLACK_MS = 2_000L
+
+/** Seek tidak boleh lebih dekat dari ini ke ujung lagu. */
+private const val SEEK_END_MARGIN_MS = 500L
+
+/** Berapa lama tujuan seek dipertahankan selagi pemutar belum sampai di sana. */
+private const val SEEK_HOLD_MS = 1_500L
+
+/** Posisi pemutar dianggap sudah sampai di tujuan seek kalau selisihnya sekecil ini. */
+private const val SEEK_SETTLED_MS = 1_500L
 
 data class PlaybackProgress(
     val positionMs: Long = 0L,
@@ -148,9 +158,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             while (true) {
                 val c = controller
                 if (c != null && c.isPlaying) {
-                    _progress.update {
-                        PlaybackProgress(c.currentPosition, c.duration.coerceAtLeast(0L))
-                    }
+                    publishProgress(c)
                     // Waktu dengar untuk Replay
                     c.currentMediaItem?.let {
                         replay.addListening(it.toSong(), 500L, c.duration.coerceAtLeast(0L))
@@ -243,8 +251,37 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun seekTo(positionMs: Long) {
-        controller?.seekTo(positionMs)
-        _progress.update { it.copy(positionMs = positionMs) }
+        val c = controller
+        // Jangan seek persis ke ujung: stream yang durasinya hanya perkiraan bisa dianggap sudah habis
+        val duration = c?.duration ?: C.TIME_UNSET
+        val target = if (duration != C.TIME_UNSET && duration > SEEK_END_MARGIN_MS) {
+            positionMs.coerceIn(0L, duration - SEEK_END_MARGIN_MS)
+        } else {
+            positionMs.coerceAtLeast(0L)
+        }
+        seekTargetMs = target
+        seekHoldUntilMs = SystemClock.elapsedRealtime() + SEEK_HOLD_MS
+        c?.seekTo(target)
+        _progress.update { it.copy(positionMs = target) }
+    }
+
+    // Setelah seek, posisi yang dibaca dari pemutar bisa sesaat masih posisi lama (pemutar sedang
+    // membuka ulang stream di titik baru). Selama jeda singkat itu, posisi basi tidak boleh
+    // menimpa tujuan seek, kalau tidak slider terlihat loncat balik ke posisi sebelumnya.
+    private var seekTargetMs = 0L
+    private var seekHoldUntilMs = 0L
+
+    private fun publishProgress(player: Player) {
+        val duration = player.duration.coerceAtLeast(0L)
+        var position = player.currentPosition
+        if (SystemClock.elapsedRealtime() < seekHoldUntilMs) {
+            if (kotlin.math.abs(position - seekTargetMs) <= SEEK_SETTLED_MS) {
+                seekHoldUntilMs = 0L // pemutar sudah sampai di tujuan
+            } else {
+                position = seekTargetMs
+            }
+        }
+        _progress.update { PlaybackProgress(position, duration) }
     }
 
     private fun startQueue(c: MediaController, items: List<MediaItem>, startIndex: Int) {
@@ -265,9 +302,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 error = player.playerError?.let { e -> "Gagal memutar: ${e.errorCodeName}" }
             )
         }
-        _progress.update {
-            PlaybackProgress(player.currentPosition, player.duration.coerceAtLeast(0L))
-        }
+        publishProgress(player)
     }
 
     private fun Song.toMediaItem(): MediaItem = MediaItem.Builder()
