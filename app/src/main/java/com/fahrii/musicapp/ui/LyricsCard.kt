@@ -18,6 +18,7 @@ import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.res.ResourcesCompat
 import coil.imageLoader
@@ -261,14 +262,31 @@ object LyricsCard {
         layout.draw(canvas)
         canvas.restore()
 
-        // Nama aplikasi di bawah
+        // Logo + nama aplikasi di bawah
         val brandPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             this.color = textColor
             textSize = 40f
             typeface = bold
             letterSpacing = 0.04f
         }
-        canvas.drawText("Sonora", PAD, H - 96f, brandPaint)
+        val brandBaseline = H - 96f
+        val logoSize = 56f
+        val logoTop = brandBaseline - 14f - logoSize / 2f // sejajar dengan tengah teks
+        val logo = runCatching { ContextCompat.getDrawable(context, R.mipmap.ic_launcher) }.getOrNull()
+        var brandX = PAD
+        if (logo != null) {
+            canvas.save()
+            canvas.clipPath(
+                Path().apply {
+                    addRoundRect(RectF(PAD, logoTop, PAD + logoSize, logoTop + logoSize), 14f, 14f, Path.Direction.CW)
+                }
+            )
+            logo.setBounds(PAD.toInt(), logoTop.toInt(), (PAD + logoSize).toInt(), (logoTop + logoSize).toInt())
+            logo.draw(canvas)
+            canvas.restore()
+            brandX = PAD + logoSize + 20f
+        }
+        canvas.drawText("SonoraMusic", brandX, brandBaseline, brandPaint)
 
         return bmp
     }

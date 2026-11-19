@@ -191,7 +191,7 @@ fun CollectionListScreen(
 }
 
 @Composable
-private fun BrandFooter() {
+internal fun BrandFooter() {
     Text(
         text = "SonoraMusic",
         fontSize = 14.sp,

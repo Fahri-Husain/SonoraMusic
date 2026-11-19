@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.LibraryState
 import com.fahrii.musicapp.data.PlayedSong
+import com.fahrii.musicapp.data.Playlist
 import com.fahrii.musicapp.data.Song
 
 private val PillSelected = Color.White
@@ -57,6 +59,9 @@ private val AccentDownloads = Color(0xFF7CE08A)
 
 /** Jumlah lagu riwayat yang ditampilkan di halaman Koleksi (daftar lengkap ada di Replay). */
 private const val HISTORY_PREVIEW = 30
+
+/** Jumlah kolom di grid playlist. */
+private const val PLAYLIST_COLUMNS = 3
 
 @Composable
 fun LibraryScreen(
@@ -90,12 +95,10 @@ fun LibraryScreen(
             ) {
                 Text(
                     text = "Koleksi",
-                    style = MaterialTheme.typography.headlineLarge,
+                    fontSize = 20.sp, // sama dengan teks "SonoraMusic" di beranda
+                    fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
-                IconButton(onClick = { showCreate = true }) {
-                    Icon(AppIcons.Plus, contentDescription = "Playlist baru")
-                }
             }
         }
 
@@ -180,42 +183,74 @@ fun LibraryScreen(
                 }
             }
         } else {
-            items(library.playlists, key = { it.id }) { playlist ->
-                LibraryRow(
-                    title = playlist.name,
-                    subtitle = "${playlist.songs.size} lagu",
-                    onClick = { onOpenPlaylist(playlist.id) }
+            // Grid 3 kolom: tile "+" di dalam kotak jadi sel pertama, playlist berikutnya
+            // mengisi kolom lalu turun ke baris di bawahnya.
+            val cells: List<Playlist?> = listOf<Playlist?>(null) + library.playlists
+            val rows = cells.chunked(PLAYLIST_COLUMNS)
+            items(rows, key = { row -> row.first()?.id ?: "create" }) { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val cover = playlist.songs.firstOrNull()?.thumbnailUrl
-                    if (cover != null) {
-                        AsyncImage(
-                            model = cover,
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(AppIcons.MusicNote, contentDescription = null)
+                    row.forEach { playlist ->
+                        if (playlist == null) {
+                            PlaylistTile(
+                                title = "Buat playlist",
+                                subtitle = null,
+                                onClick = { showCreate = true },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        AppIcons.Plus,
+                                        contentDescription = "Playlist baru",
+                                        modifier = Modifier.size(36.dp)
+                                    )
+                                }
+                            }
+                        } else {
+                            PlaylistTile(
+                                title = playlist.name,
+                                subtitle = "Kamu",
+                                onClick = { onOpenPlaylist(playlist.id) },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                val cover = playlist.songs.firstOrNull()?.thumbnailUrl
+                                if (cover != null) {
+                                    AsyncImage(
+                                        model = cover,
+                                        contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(AppIcons.MusicNote, contentDescription = null)
+                                    }
+                                }
+                            }
                         }
                     }
+                    // Baris terakhir yang belum penuh: isi sisa kolom supaya ukuran tile tetap sama
+                    repeat(PLAYLIST_COLUMNS - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
 
-            if (library.playlists.isEmpty()) {
-                item {
-                    Text(
-                        text = "Belum ada playlist. Tekan + untuk membuat.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                }
+            // Teks merek di tengah layar, di bawah grid playlist
+            item(key = "brand-footer") {
+                Spacer(Modifier.height(28.dp))
+                BrandFooter()
+                Spacer(Modifier.height(12.dp))
             }
         }
     }
@@ -356,46 +391,41 @@ private fun HistoryRow(
     }
 }
 
+/** Satu sel di grid playlist: cover persegi, nama di bawahnya, lalu teks kecil (opsional). */
 @Composable
-private fun LibraryRow(
+private fun PlaylistTile(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     cover: @Composable () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Column(modifier = modifier.clickable(onClick = onClick)) {
         Box(
-            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             cover()
         }
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (subtitle != null) {
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
-        Icon(
-            AppIcons.ChevronRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(16.dp)
-        )
     }
 }

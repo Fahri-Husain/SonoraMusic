@@ -2,7 +2,9 @@ package com.fahrii.musicapp.ui
 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material.icons.filled.Close
@@ -61,6 +63,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -120,7 +123,11 @@ fun NowPlayingScreen(
     var lyrics by remember(song.url) { mutableStateOf<List<LyricLine>?>(null) }
     LaunchedEffect(song.url) {
         lyrics = null
-        lyrics = LyricsRepository.get(song.title, song.artist)
+        // Tunggu durasi dari pemutar (maks. 4 dtk) supaya versi lirik yang waktunya cocok bisa dipilih
+        val durationSec = withTimeoutOrNull(4_000) {
+            snapshotFlow { progress.durationMs }.first { it > 0 }
+        }?.div(1000) ?: -1L
+        lyrics = LyricsRepository.get(song.title, song.artist, durationSec)
     }
 
     LaunchedEffect(lyrics) { if (lyrics?.isEmpty() == true) showLyrics = false }
