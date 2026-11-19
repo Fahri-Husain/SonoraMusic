@@ -29,7 +29,9 @@ data class Playlist(
 
 data class LibraryState(
     val liked: List<Song> = emptyList(),
-    val playlists: List<Playlist> = emptyList()
+    val playlists: List<Playlist> = emptyList(),
+    /** Playlist tujuan cepat (bar di layar Now Playing); null = belum dipilih. */
+    val quickPlaylistId: String? = null
 )
 
 class LibraryRepository private constructor(private val context: Context) {
@@ -76,8 +78,22 @@ class LibraryRepository private constructor(private val context: Context) {
 
     fun deletePlaylist(id: String) {
         val thumb = _state.value.playlists.firstOrNull { it.id == id }?.thumbnailPath
-        _state.update { s -> s.copy(playlists = s.playlists.filterNot { it.id == id }) }
+        _state.update { s ->
+            s.copy(
+                playlists = s.playlists.filterNot { it.id == id },
+                // Playlist tujuan cepat yang dihapus otomatis dilepas
+                quickPlaylistId = s.quickPlaylistId.takeIf { it != id }
+            )
+        }
         thumb?.let { runCatching { File(it).delete() } }
+        persist()
+    }
+
+    /** Pilih playlist tujuan cepat; null untuk melepas pilihan. */
+    fun setQuickPlaylist(id: String?) {
+        _state.update { s ->
+            s.copy(quickPlaylistId = id?.takeIf { target -> s.playlists.any { it.id == target } })
+        }
         persist()
     }
 
@@ -190,7 +206,9 @@ class LibraryRepository private constructor(private val context: Context) {
                     )
                 }
             } ?: emptyList()
-            LibraryState(liked, playlists)
+            val quickId = root.optString("quickPlaylistId", "")
+                .takeIf { id -> playlists.any { it.id == id } }
+            LibraryState(liked, playlists, quickId)
         } catch (e: Exception) {
             LibraryState()
         }
@@ -236,6 +254,7 @@ private fun List<Song>.toJsonArray(): JSONArray {
 
 private fun LibraryState.toJson(): JSONObject = JSONObject().apply {
     put("liked", liked.toJsonArray())
+    quickPlaylistId?.let { put("quickPlaylistId", it) }
     put("playlists", JSONArray().also { arr ->
         playlists.forEach { p ->
             arr.put(JSONObject().apply {

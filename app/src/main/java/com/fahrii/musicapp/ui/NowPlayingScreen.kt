@@ -22,8 +22,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -36,6 +38,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -62,6 +67,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -77,6 +83,10 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -86,6 +96,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
@@ -98,7 +109,9 @@ fun NowPlayingScreen(
     viewModel: PlayerViewModel,
     libraryViewModel: LibraryViewModel,
     onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Dipanggil setelah layar selesai meluncur keluar karena digeser turun (default: sama dengan [onBack]). */
+    onSwipeDismiss: () -> Unit = onBack
 ) {
     val state by viewModel.state.collectAsState()
     val progress by viewModel.progress.collectAsState()
@@ -146,7 +159,94 @@ fun NowPlayingScreen(
 
     val inactive = Sonora.TextSecondary
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // Geser ke bawah = kembali (seperti tombol kembali). Layar ikut bergerak mengikuti jari:
+    // dilepas setelah cukup jauh / cukup cepat -> meluncur ke bawah lalu kembali; kalau belum ->
+    // memantul ke posisi semula. Nonaktif saat lirik penuh terbuka (daftar liriknya punya gulir sendiri).
+    val currentOnSwipeDismiss by rememberUpdatedState(onSwipeDismiss)
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var screenHeightPx by remember { mutableFloatStateOf(0f) }
+
+    // Geser ke bawah di halaman lirik penuh = tutup lirik (seperti tombol kembali di sana), tapi
+    // hanya setelah daftar lirik mentok di atas: selama masih bisa digulir, jari menggulir daftar.
+    var lyricsDragY by remember { mutableFloatStateOf(0f) }
+    var lyricsClosedBySwipe by remember { mutableStateOf(false) }
+    val lyricsDismissConnection = remember {
+        object : NestedScrollConnection {
+            // Halaman lirik sedang turun lalu jari bergerak naik: naikkan halamannya dulu sebelum daftar menggulir
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && lyricsDragY > 0f && available.y < 0f) {
+                    val used = maxOf(available.y, -lyricsDragY)
+                    lyricsDragY += used
+                    return Offset(0f, used)
+                }
+                return Offset.Zero
+            }
+
+            // Daftar sudah mentok di atas, jari masih menarik ke bawah: halaman lirik ikut turun
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput && available.y > 0f) {
+                    lyricsDragY += available.y
+                    return Offset(0f, available.y)
+                }
+                return Offset.Zero
+            }
+
+            // Jari dilepas: cukup jauh / cukup cepat -> meluncur keluar dan tutup, kalau tidak -> kembali
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (lyricsDragY <= 0f) return Velocity.Zero
+                val shouldClose = lyricsDragY > screenHeightPx * 0.25f || available.y > 1500f
+                if (shouldClose) {
+                    animate(
+                        initialValue = lyricsDragY,
+                        targetValue = screenHeightPx,
+                        animationSpec = tween(220)
+                    ) { value, _ -> lyricsDragY = value }
+                    lyricsClosedBySwipe = true
+                    showLyrics = false
+                } else {
+                    animate(
+                        initialValue = lyricsDragY,
+                        targetValue = 0f,
+                        animationSpec = tween(250)
+                    ) { value, _ -> lyricsDragY = value }
+                }
+                return available
+            }
+        }
+    }
+
+    Box(
+        // graphicsLayer paling depan supaya latar (background dari pemanggil) ikut bergeser
+        modifier = Modifier
+            .graphicsLayer { translationY = dragY }
+            .then(modifier)
+            .fillMaxSize()
+            .onSizeChanged { screenHeightPx = it.height.toFloat() }
+            .draggable(
+                orientation = Orientation.Vertical,
+                enabled = !showLyrics,
+                state = rememberDraggableState { delta ->
+                    dragY = (dragY + delta).coerceAtLeast(0f)
+                },
+                onDragStopped = { velocity ->
+                    val shouldClose = dragY > screenHeightPx * 0.25f || velocity > 1500f
+                    if (shouldClose) {
+                        animate(
+                            initialValue = dragY,
+                            targetValue = screenHeightPx,
+                            animationSpec = tween(220)
+                        ) { value, _ -> dragY = value }
+                        currentOnSwipeDismiss()
+                    } else {
+                        animate(
+                            initialValue = dragY,
+                            targetValue = 0f,
+                            animationSpec = tween(250)
+                        ) { value, _ -> dragY = value }
+                    }
+                }
+            )
+    ) {
 
         // Latar: cover diperbesar, diburamkan, dibuat lebih terang dan pekat warnanya,
         // lalu memudar ke warna background di sekitar judul lagu.
@@ -312,7 +412,11 @@ fun NowPlayingScreen(
             LyricsView(
                 lines = lyrics,
                 positionMs = progress.positionMs,
-                onClick = { showLyrics = true }
+                onClick = {
+                    lyricsClosedBySwipe = false
+                    lyricsDragY = 0f
+                    showLyrics = true
+                }
             )
 
             Spacer(Modifier.height(8.dp))
@@ -426,7 +530,12 @@ fun NowPlayingScreen(
         AnimatedVisibility(
             visible = showLyrics,
             enter = slideInVertically(tween(320)) { it } + fadeIn(tween(320)),
-            exit = slideOutVertically(tween(280)) { it } + fadeOut(tween(280))
+            // Ditutup lewat geser: halamannya sudah meluncur keluar sendiri, jadi tanpa animasi keluar lagi
+            exit = if (lyricsClosedBySwipe) {
+                ExitTransition.None
+            } else {
+                slideOutVertically(tween(280)) { it } + fadeOut(tween(280))
+            }
         ) {
             FullLyricsScreen(
                 title = song.title,
@@ -435,7 +544,11 @@ fun NowPlayingScreen(
                 lines = lyrics.orEmpty(),
                 positionMs = progress.positionMs,
                 onSeek = { viewModel.seekTo(it) },
-                onClose = { showLyrics = false }
+                onClose = { showLyrics = false },
+                // graphicsLayer paling depan supaya latar halaman lirik ikut bergeser
+                modifier = Modifier
+                    .graphicsLayer { translationY = lyricsDragY }
+                    .nestedScroll(lyricsDismissConnection)
             ) {
                 ProgressBar(
                     value = sliderValue,
@@ -486,16 +599,11 @@ fun NowPlayingScreen(
     }
 
     if (showAddDialog) {
-        AddToPlaylistDialog(
+        AddToPlaylistSheet(
+            song = song,
             playlists = library.playlists,
-            onSelect = {
-                libraryViewModel.addToPlaylist(it.id, song)
-                showAddDialog = false
-            },
-            onCreateNew = { name ->
-                libraryViewModel.createPlaylist(name, song)
-                showAddDialog = false
-            },
+            onAdd = { libraryViewModel.addToPlaylist(it.id, song) },
+            onRemove = { libraryViewModel.removeFromPlaylist(it.id, song.url) },
             onDismiss = { showAddDialog = false }
         )
     }

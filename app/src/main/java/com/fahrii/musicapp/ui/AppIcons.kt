@@ -11,6 +11,7 @@ import com.adamglin.phosphoricons.bold.ArrowCounterClockwise
 import com.adamglin.phosphoricons.bold.DotsThreeVertical
 import com.adamglin.phosphoricons.bold.TrendUp
 import com.adamglin.phosphoricons.bold.CaretDown
+import com.adamglin.phosphoricons.bold.Check
 import com.adamglin.phosphoricons.bold.CaretLeft
 import com.adamglin.phosphoricons.bold.CaretRight
 import com.adamglin.phosphoricons.bold.ListPlus
@@ -60,6 +61,7 @@ object AppIcons {
     val RepeatOne: ImageVector = PhosphorIcons.Bold.RepeatOnce
     val Plus: ImageVector = PhosphorIcons.Bold.Plus
     val PlaylistAdd: ImageVector = PhosphorIcons.Bold.ListPlus
+    val Check: ImageVector = PhosphorIcons.Bold.Check
 
     val Play: ImageVector = PhosphorIcons.Fill.Play
     val Pause: ImageVector = PhosphorIcons.Fill.Pause

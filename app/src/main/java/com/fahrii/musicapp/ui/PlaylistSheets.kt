@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.fahrii.musicapp.data.Playlist
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.launch
 
@@ -89,7 +90,7 @@ private fun SheetItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 48.dp)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 32.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -104,7 +105,7 @@ private fun SheetItem(
         Text(
             text = text,
             color = if (enabled) Color.White else SheetDisabled,
-            fontSize = 17.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -173,14 +174,14 @@ fun SongOptionsSheet(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = song.title,
-                            fontSize = 17.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = song.artist,
-                            fontSize = 15.sp,
+                            fontSize = 13.sp,
                             color = Color.White.copy(alpha = 0.7f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -202,7 +203,8 @@ fun SongOptionsSheet(
             iconTint = if (liked) HeartColor else Color.White
         )
         SheetItem(AppIcons.Download, "Unduh", onClick = { dismissThen(onDownload) })
-        SheetItem(AppIcons.PlaylistAdd, "Tambahkan ke playlist", onClick = { dismissThen(onAddToPlaylist) })
+        // Menu ini sengaja tidak ditutup: sheet playlist muncul di atasnya (seperti bar di bawah)
+        SheetItem(AppIcons.PlaylistAdd, "Tambahkan ke playlist", onClick = onAddToPlaylist)
         SheetItem(AppIcons.PlayNext, "Putar selanjutnya", onClick = { dismissThen(onPlayNext) })
         SheetItem(AppIcons.Queue, "Tambahkan ke daftar antri", onClick = { dismissThen(onAddToQueue) })
         SheetItem(AppIcons.Artist, "Artis", onClick = { dismissThen(onOpenArtist) })
@@ -212,5 +214,30 @@ fun SongOptionsSheet(
         }
         SheetItem(AppIcons.Radio, "Putar radio", onClick = { dismissThen(onPlayRadio) })
         SheetItem(AppIcons.Share, "Bagikan", onClick = { dismissThen(onShare) })
+    }
+}
+
+/**
+ * Bottom sheet "Tambahkan ke playlist". Tiap playlist berikon ceklis kalau [song] sudah ada di
+ * dalamnya, dan ikon tambah kalau belum. Ketuk untuk menambah / mengeluarkan lagu; sheet tetap
+ * terbuka supaya ikonnya langsung berubah.
+ */
+@Composable
+fun AddToPlaylistSheet(
+    song: Song,
+    playlists: List<Playlist>,
+    onAdd: (Playlist) -> Unit,
+    onRemove: (Playlist) -> Unit,
+    onDismiss: () -> Unit
+) {
+    ActionSheet(onDismiss = onDismiss) { _ ->
+        playlists.forEach { playlist ->
+            val added = playlist.songs.any { it.url == song.url }
+            SheetItem(
+                icon = if (added) AppIcons.Check else AppIcons.PlaylistAdd,
+                text = playlist.name,
+                onClick = { if (added) onRemove(playlist) else onAdd(playlist) }
+            )
+        }
     }
 }

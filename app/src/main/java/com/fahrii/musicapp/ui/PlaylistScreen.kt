@@ -106,7 +106,7 @@ fun PlaylistScreen(
     onPlayNext: (Song) -> Unit,
     onToggleLike: (Song) -> Unit,
     onAddToPlaylist: (Playlist, Song) -> Unit,
-    onCreatePlaylistWith: (String, Song) -> Unit,
+    onRemoveFromPlaylist: (Playlist, Song) -> Unit,
     onRequestAlbum: (Song) -> Unit,
     onOpenArtist: (String) -> Unit,
     onOpenAlbum: (ArtistAlbum) -> Unit,
@@ -493,16 +493,11 @@ fun PlaylistScreen(
     }
 
     addToPlaylistSong?.let { song ->
-        AddToPlaylistDialog(
+        AddToPlaylistSheet(
+            song = song,
             playlists = playlists,
-            onSelect = {
-                onAddToPlaylist(it, song)
-                addToPlaylistSong = null
-            },
-            onCreateNew = { name ->
-                onCreatePlaylistWith(name, song)
-                addToPlaylistSong = null
-            },
+            onAdd = { onAddToPlaylist(it, song) },
+            onRemove = { onRemoveFromPlaylist(it, song) },
             onDismiss = { addToPlaylistSong = null }
         )
     }

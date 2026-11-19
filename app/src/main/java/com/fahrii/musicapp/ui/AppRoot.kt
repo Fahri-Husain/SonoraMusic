@@ -1,6 +1,7 @@
 package com.fahrii.musicapp.ui
 
 import android.R.attr.alpha
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
@@ -34,8 +35,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -64,7 +67,6 @@ private const val ROUTE_SEARCH = "search"
 private const val ROUTE_LIBRARY = "library"
 private const val ROUTE_LIKED = "liked"
 private const val ROUTE_PLAYLIST = "playlist/{id}"
-private const val ROUTE_PLAYER = "player"
 private const val ROUTE_PICK = "pick/{index}"
 private const val ROUTE_REPLAY = "replay"
 private const val ROUTE_ARTIST = "artist/{name}"
@@ -115,7 +117,12 @@ fun AppRoot(
         navController.addOnDestinationChangedListener(listener)
         onDispose { navController.removeOnDestinationChangedListener(listener) }
     }
-    val onPlayerScreen = route == ROUTE_PLAYER
+    // Now Playing adalah lapisan di atas NavHost (bukan rute), supaya halaman yang sedang dibuka
+    // tetap tampil di belakangnya saat player digeser turun.
+    var showPlayer by rememberSaveable { mutableStateOf(false) }
+    // True kalau player ditutup lewat geser: layarnya sudah meluncur keluar sendiri, jadi tanpa animasi keluar lagi
+    var playerClosedBySwipe by remember { mutableStateOf(false) }
+    val onPlayerScreen = showPlayer
     val currentTab = when (route) {
         ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST, ROUTE_ALBUM -> BottomTab.COLLECTION
         ROUTE_SEARCH -> BottomTab.SEARCH
@@ -177,14 +184,10 @@ fun AppRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .glassSource(backdrop),
-                    // Player naik dari bawah saat dibuka dan turun lagi saat kembali (hanya geser,
-                    // tanpa fade, supaya ringan). Halaman di belakangnya diam.
                     // Beranda <-> Koleksi: geser horizontal (Beranda di kiri, Koleksi di kanan).
                     enterTransition = {
                         val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
                         when {
-                            targetState.destination.route == ROUTE_PLAYER ->
-                                slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it }
                             dir > 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             dir < 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             else -> fadeIn(tween(300))
@@ -193,8 +196,6 @@ fun AppRoot(
                     exitTransition = {
                         val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
                         when {
-                            // Halaman di belakang diam; player menutupinya sambil naik
-                            targetState.destination.route == ROUTE_PLAYER -> ExitTransition.None
                             dir > 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             dir < 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             else -> fadeOut(tween(300))
@@ -203,7 +204,6 @@ fun AppRoot(
                     popEnterTransition = {
                         val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
                         when {
-                            initialState.destination.route == ROUTE_PLAYER -> EnterTransition.None
                             dir > 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             dir < 0 -> slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             else -> fadeIn(tween(300))
@@ -212,8 +212,6 @@ fun AppRoot(
                     popExitTransition = {
                         val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
                         when {
-                            initialState.destination.route == ROUTE_PLAYER ->
-                                slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
                             dir > 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Left, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             dir < 0 -> slideOutOfContainer(AnimatedContentTransitionScope.SlideDirection.Right, tween(TAB_SLIDE_MS, easing = FastOutSlowInEasing))
                             else -> fadeOut(tween(300))
@@ -496,23 +494,12 @@ fun AppRoot(
                                 onPlayNext = playerViewModel::playNext,
                                 onToggleLike = libraryViewModel::toggleLike,
                                 onAddToPlaylist = { target, song -> libraryViewModel.addToPlaylist(target.id, song) },
-                                onCreatePlaylistWith = { name, song -> libraryViewModel.createPlaylist(name, song) },
+                                onRemoveFromPlaylist = { target, song -> libraryViewModel.removeFromPlaylist(target.id, song.url) },
                                 onRequestAlbum = libraryViewModel::requestSongAlbum,
                                 onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                                 onOpenAlbum = ::openAlbum
                             )
                         }
-                    }
-
-                    composable(ROUTE_PLAYER) {
-                        NowPlayingScreen(
-                            viewModel = playerViewModel,
-                            libraryViewModel = libraryViewModel,
-                            onBack = { navController.popBackStack() },
-                            modifier = Modifier
-                                .background(Sonora.Background)
-                                .navigationBarsPadding()
-                        )
                     }
 
                     composable(
@@ -604,9 +591,38 @@ fun AppRoot(
                     },
                     onToggle = playerViewModel::togglePlayPause,
                     onPlayerClick = {
-                        navController.navigate(ROUTE_PLAYER) { launchSingleTop = true }
+                        playerClosedBySwipe = false
+                        showPlayer = true
                     },
                     modifier = Modifier.onSizeChanged { barHeightPx = it.height }
+                )
+            }
+
+            // Now Playing: naik dari bawah saat dibuka, turun lagi saat kembali. Berada di atas
+            // NavHost dan bar bawah, jadi halaman di belakangnya tetap terlihat saat digeser turun.
+            AnimatedVisibility(
+                visible = showPlayer,
+                enter = slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it },
+                exit = if (playerClosedBySwipe) {
+                    ExitTransition.None
+                } else {
+                    slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
+                }
+            ) {
+                // Didaftarkan saat player dibuka, jadi lebih diprioritaskan daripada tombol kembali halaman di belakangnya
+                BackHandler { showPlayer = false }
+                NowPlayingScreen(
+                    viewModel = playerViewModel,
+                    libraryViewModel = libraryViewModel,
+                    onBack = { showPlayer = false },
+                    onSwipeDismiss = {
+                        playerClosedBySwipe = true
+                        showPlayer = false
+                    },
+                    modifier = Modifier
+                        .pointerInput(Unit) {} // cegah ketukan tembus ke halaman di belakang
+                        .background(Sonora.Background)
+                        .navigationBarsPadding()
                 )
             }
         }

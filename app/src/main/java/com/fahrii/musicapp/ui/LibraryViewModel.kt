@@ -55,6 +55,8 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
     fun removeFromPlaylist(playlistId: String, songUrl: String) =
         repo.removeFromPlaylist(playlistId, songUrl)
 
+    fun setQuickPlaylist(id: String?) = repo.setQuickPlaylist(id)
+
     fun renamePlaylist(id: String, name: String) = repo.renamePlaylist(id, name)
 
     fun setPlaylistThumbnail(id: String, uri: Uri) = repo.setPlaylistThumbnail(id, uri)
