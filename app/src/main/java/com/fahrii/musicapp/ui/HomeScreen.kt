@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import com.fahrii.musicapp.R
 import androidx.compose.ui.layout.ContentScale
@@ -119,7 +120,7 @@ private fun currentHour(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY
 fun HomeScreen(
     viewModel: HomeViewModel,
     onPlay: (List<Song>, Int, String) -> Unit,
-    onGenreClick: (String) -> Unit,
+    onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit,
     onArtistClick: (String) -> Unit,
     onPickClick: (Int) -> Unit,
     onSeeAllNewReleases: () -> Unit,
@@ -610,7 +611,7 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
 // ---------- Genre ----------
 
 @Composable
-private fun GenreGrid(onGenreClick: (String) -> Unit) {
+private fun GenreGrid(onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit) {
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
@@ -620,7 +621,13 @@ private fun GenreGrid(onGenreClick: (String) -> Unit) {
         genres.chunked(3).forEach { column ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 column.forEach { genre ->
-                    GenrePill(genre = genre, onClick = { onGenreClick(genre.query) })
+                    GenrePill(
+                        genre = genre,
+                        onClick = {
+                            // Nama di pil bisa dua baris ("Dance &\nElektronik"); judul halaman satu baris
+                            onGenreClick(genre.name.replace("\n", " "), genre.query, genre.accent.toArgb())
+                        }
+                    )
                 }
             }
         }

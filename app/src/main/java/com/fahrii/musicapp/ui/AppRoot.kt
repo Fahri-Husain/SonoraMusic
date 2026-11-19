@@ -72,6 +72,8 @@ private const val ROUTE_ALBUM = "album?title={title}&artist={artist}&url={url}&c
 private const val ROUTE_MOST_PLAYED = "most_played"
 private const val ROUTE_NEW_RELEASES = "new_releases"
 private const val ROUTE_TRENDING = "trending"
+private const val ROUTE_GENRE = "genre?name={name}&query={query}&accent={accent}"
+private const val ROUTE_GENRE_SONGS = "genre_songs"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
 internal const val TAB_SLIDE_MS = 350
@@ -146,6 +148,12 @@ fun AppRoot(
         navController.navigateToTab(ROUTE_SEARCH)
     }
 
+    fun openGenre(name: String, query: String, accentArgb: Int) {
+        navController.navigate(
+            "genre?name=${Uri.encode(name)}&query=${Uri.encode(query)}&accent=$accentArgb"
+        )
+    }
+
     fun openAlbum(album: ArtistAlbum) {
         navController.navigate(
             "album?title=${Uri.encode(album.title)}" +
@@ -216,7 +224,7 @@ fun AppRoot(
                         HomeScreen(
                             viewModel = homeViewModel,
                             onPlay = { songs, index, source -> playerViewModel.playQueue(songs, index, source) },
-                            onGenreClick = ::openSearch,
+                            onGenreClick = ::openGenre,
                             onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                             listState = homeListState,
                             onPickClick = { navController.navigate("pick/$it") },
@@ -330,6 +338,62 @@ fun AppRoot(
                                 playerViewModel.playQueue(songs, index, "Album \"${albumState.title}\"")
                             }
                         )
+                    }
+
+                    composable(
+                        route = ROUTE_GENRE,
+                        arguments = listOf(
+                            navArgument("name") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("query") { type = NavType.StringType; defaultValue = "" },
+                            navArgument("accent") { type = NavType.IntType; defaultValue = 0 }
+                        )
+                    ) { entry ->
+                        val name = entry.arguments?.getString("name").orEmpty()
+                        val query = entry.arguments?.getString("query").orEmpty()
+                        val accent = androidx.compose.ui.graphics.Color(entry.arguments?.getInt("accent") ?: 0)
+                        val genreViewModel: GenreViewModel = viewModel()
+                        val genreState by genreViewModel.state.collectAsState()
+                        LaunchedEffect(name, query) { genreViewModel.load(name, query) }
+
+                        GenreScreen(
+                            state = genreState,
+                            accent = accent,
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Genre \"$name\"") },
+                            onOpenArtist = { artist -> navController.navigate("artist/${Uri.encode(artist)}") },
+                            onOpenAlbum = ::openAlbum,
+                            onSeeAllSongs = { navController.navigate(ROUTE_GENRE_SONGS) }
+                        )
+                    }
+
+                    composable(ROUTE_GENRE_SONGS) {
+                        // Daftar lengkap memakai data yang sama dengan halaman Genre di bawahnya
+                        // (ViewModel milik entri halaman Genre), jadi tidak perlu memuat ulang
+                        val genreEntry = remember(it) {
+                            runCatching { navController.getBackStackEntry(ROUTE_GENRE) }.getOrNull()
+                        }
+                        if (genreEntry == null) {
+                            LaunchedEffect(Unit) { navController.popBackStack() }
+                        } else {
+                            val genreViewModel: GenreViewModel = viewModel(viewModelStoreOwner = genreEntry)
+                            val genreState by genreViewModel.state.collectAsState()
+                            PickDetailScreen(
+                                pick = QuickPick(
+                                    label = "Lagu populer",
+                                    subtitle = "Genre ${genreState.name}",
+                                    query = "",
+                                    songs = genreState.songs
+                                ),
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying,
+                                onBack = { navController.popBackStack() },
+                                onPlay = { songs, index ->
+                                    playerViewModel.playQueue(songs, index, "Genre \"${genreState.name}\"")
+                                }
+                            )
+                        }
                     }
 
                     composable(ROUTE_NEW_RELEASES) {

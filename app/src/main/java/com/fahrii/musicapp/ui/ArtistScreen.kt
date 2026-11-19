@@ -472,7 +472,7 @@ private fun PopularSongRow(
 }
 
 @Composable
-private fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
+internal fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Column(
         modifier = Modifier

@@ -685,7 +685,8 @@ private fun ReplayFullList(
                         item = item,
                         isCurrent = item.song.url == currentSongUrl,
                         isPlaying = isPlaying,
-                        onClick = { onPlay(queue, index) }
+                        onClick = { onPlay(queue, index) },
+                        numberFirst = true
                     )
                 }
 
@@ -973,16 +974,21 @@ private fun TopSongRow(
     item: MonthSong,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    /** true = angka di depan thumbnail (daftar lengkap); false = thumbnail dulu, baru angka (pratinjau). */
+    numberFirst: Boolean = false
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Lagu yang sedang diputar: thumbnail diganti ritme (sama seperti daftar lagu lain)
+    val rankText: @Composable () -> Unit = {
+        Text(
+            text = "$rank",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.width(40.dp)
+        )
+    }
+    // Lagu yang sedang diputar: thumbnail diganti ritme (sama seperti daftar lagu lain)
+    val thumb: @Composable () -> Unit = {
         if (isCurrent && isPlaying) {
             PlayingThumb(isPlaying = isPlaying, size = 48.dp)
         } else {
@@ -993,14 +999,28 @@ private fun TopSongRow(
                 contentScale = ContentScale.Crop
             )
         }
-        Text(
-            text = "$rank",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.width(40.dp)
-        )
-        Column(modifier = Modifier.weight(1f)) {
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (numberFirst) {
+            rankText()
+            thumb()
+        } else {
+            thumb()
+            rankText()
+        }
+        // Angka di depan: teks butuh jarak dari thumbnail (kalau angka di tengah, lebar angkanya sudah jadi jarak)
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = if (numberFirst) 12.dp else 0.dp)
+        ) {
             Text(
                 text = item.song.title,
                 fontSize = 15.sp,

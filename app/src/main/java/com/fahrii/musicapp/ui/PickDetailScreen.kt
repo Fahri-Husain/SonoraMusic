@@ -244,7 +244,7 @@ private fun PickHero(
 }
 
 @Composable
-private fun TrackRow(
+internal fun TrackRow(
     number: Int,
     song: Song,
     isCurrent: Boolean,
