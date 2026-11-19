@@ -134,14 +134,17 @@ fun PlaylistOptionsSheet(
     }
 }
 
-/** Menu titik tiga di setiap lagu pada halaman playlist. */
+/**
+ * Menu titik tiga di setiap lagu (playlist, beranda, koleksi). [remove] adalah baris paling atas
+ * yang khas tiap layar (mis. "Hapus dari riwayat"); null berarti baris itu tidak ditampilkan.
+ */
 @Composable
 fun SongOptionsSheet(
     song: Song,
     liked: Boolean,
     albumName: String?,
     onDismiss: () -> Unit,
-    onRemoveFromPlaylist: () -> Unit,
+    remove: SongMenuRemove?,
     onToggleLike: () -> Unit,
     onDownload: () -> Unit,
     onAddToPlaylist: () -> Unit,
@@ -195,7 +198,9 @@ fun SongOptionsSheet(
             }
         }
     ) { dismissThen ->
-        SheetItem(AppIcons.DeleteFilled, "Menghapus lagu ini dari daftar putar", onClick = { dismissThen(onRemoveFromPlaylist) })
+        if (remove != null) {
+            SheetItem(AppIcons.DeleteFilled, remove.label, onClick = { dismissThen(remove.onRemove) })
+        }
         SheetItem(
             icon = if (liked) AppIcons.HeartFilled else AppIcons.Heart,
             text = "Suka",

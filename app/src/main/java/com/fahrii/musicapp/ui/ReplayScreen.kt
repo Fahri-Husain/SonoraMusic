@@ -35,6 +35,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -987,6 +988,7 @@ private fun TopSongRow(
             modifier = Modifier.width(40.dp)
         )
     }
+    val songMenu = LocalSongMenu.current
     // Lagu yang sedang diputar: thumbnail diganti ritme (sama seperti daftar lagu lain)
     val thumb: @Composable () -> Unit = {
         if (isCurrent && isPlaying) {
@@ -1034,6 +1036,9 @@ private fun TopSongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        IconButton(onClick = { songMenu.show(item.song) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }
@@ -1153,7 +1158,7 @@ private fun AlbumDetailScreen(
 
                 full != null -> itemsIndexed(tracks, key = { index, t -> "$index-${t.url}" }) { index, song ->
                     val plays = playsByUrl[song.url] ?: playsByTitle[song.title.trim().lowercase()] ?: 0
-                    Box(Modifier.padding(horizontal = 16.dp)) {
+                    Box(Modifier.padding(start = 16.dp, end = 4.dp)) {
                         AlbumTrackRow(
                             number = index + 1,
                             song = song,
@@ -1175,7 +1180,7 @@ private fun AlbumDetailScreen(
                         )
                     }
                     itemsIndexed(listened, key = { _, t -> t.song.url }) { index, item ->
-                        Box(Modifier.padding(horizontal = 16.dp)) {
+                        Box(Modifier.padding(start = 16.dp, end = 4.dp)) {
                             TopSongRow(
                                 rank = index + 1,
                                 item = item,
@@ -1208,11 +1213,13 @@ private fun AlbumTrackRow(
     isPlaying: Boolean,
     onClick: () -> Unit
 ) {
+    val songMenu = LocalSongMenu.current
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -1249,6 +1256,9 @@ private fun AlbumTrackRow(
                 color = Muted,
                 modifier = Modifier.padding(start = 12.dp)
             )
+        }
+        IconButton(onClick = { songMenu.show(song) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }

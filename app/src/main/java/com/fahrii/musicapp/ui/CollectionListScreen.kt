@@ -36,7 +36,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,14 +58,14 @@ fun CollectionListScreen(
     songs: List<Song>,
     onBack: () -> Unit,
     onPlay: (List<Song>, Int) -> Unit,
-    onRemove: (Song) -> Unit,
-    removeIcon: ImageVector,
-    removeTint: Color,
-    removeDescription: String,
     modifier: Modifier = Modifier,
     currentSongUrl: String? = null,
-    isPlaying: Boolean = false
+    isPlaying: Boolean = false,
+    // Baris paling atas di menu titik tiga (mis. "Hapus dari riwayat"); kosong = tidak ada barisnya
+    removeLabel: String? = null,
+    onRemove: ((Song) -> Unit)? = null
 ) {
+    val songMenu = LocalSongMenu.current
     var searching by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
 
@@ -173,10 +172,12 @@ fun CollectionListScreen(
                         isCurrent = song.url == currentSongUrl,
                         isPlaying = isPlaying,
                         onClick = { onPlay(shown, index) },
-                        onRemove = { onRemove(song) },
-                        removeIcon = removeIcon,
-                        removeTint = removeTint,
-                        removeDescription = removeDescription
+                        onMore = {
+                            val remove = if (removeLabel != null && onRemove != null) {
+                                SongMenuRemove(removeLabel) { onRemove(song) }
+                            } else null
+                            songMenu.show(song, remove)
+                        }
                     )
                 }
                 // Teks merek berada di bawah trek lagu terakhir
@@ -209,10 +210,7 @@ private fun CollectionSongRow(
     isCurrent: Boolean,
     isPlaying: Boolean,
     onClick: () -> Unit,
-    onRemove: () -> Unit,
-    removeIcon: ImageVector,
-    removeTint: Color,
-    removeDescription: String
+    onMore: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -252,8 +250,8 @@ private fun CollectionSongRow(
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
-        IconButton(onClick = onRemove) {
-            Icon(imageVector = removeIcon, contentDescription = removeDescription, tint = removeTint)
+        IconButton(onClick = onMore) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }

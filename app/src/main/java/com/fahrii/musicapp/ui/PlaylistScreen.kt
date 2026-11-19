@@ -462,7 +462,7 @@ fun PlaylistScreen(
             liked = song.url in likedUrls,
             albumName = songAlbums[song.url]?.trim()?.takeIf { it.isNotEmpty() },
             onDismiss = { menuSong = null },
-            onRemoveFromPlaylist = { onRemoveSong(song) },
+            remove = SongMenuRemove("Menghapus lagu ini dari daftar putar") { onRemoveSong(song) },
             onToggleLike = { onToggleLike(song) },
             onDownload = { toast("Fitur unduhan belum tersedia") },
             onAddToPlaylist = { addToPlaylistSong = song },

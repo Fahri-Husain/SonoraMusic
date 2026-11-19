@@ -26,8 +26,11 @@ object ChartRepository {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
+    /** Kueri yang dicari di YouTube Music untuk memutar lagu ini (juga dipakai mengambil durasinya). */
+    fun searchQuery(title: String, artist: String): String = "$title $artist".trim()
+
     fun searchUrl(title: String, artist: String): String =
-        "sonora://search?q=" + Uri.encode("$title $artist".trim())
+        "sonora://search?q=" + Uri.encode(searchQuery(title, artist))
 
     suspend fun trendingTracks(limit: Int = 50): List<Song> = withContext(Dispatchers.IO) {
         getData("$BASE/chart/0/tracks?limit=$limit").mapNotNull { it.toTrackSong() }

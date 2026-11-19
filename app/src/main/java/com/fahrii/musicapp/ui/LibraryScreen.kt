@@ -21,8 +21,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -337,7 +335,7 @@ private fun HistoryRow(
     onClick: () -> Unit,
     onRemove: () -> Unit
 ) {
-    var menuOpen by remember { mutableStateOf(false) }
+    val songMenu = LocalSongMenu.current
 
     Row(
         modifier = Modifier
@@ -375,19 +373,8 @@ private fun HistoryRow(
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
         }
-        Box {
-            IconButton(onClick = { menuOpen = true }) {
-                Icon(AppIcons.MoreVert, contentDescription = "Opsi")
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text("Hapus dari riwayat") },
-                    onClick = {
-                        menuOpen = false
-                        onRemove()
-                    }
-                )
-            }
+        IconButton(onClick = { songMenu.show(song, SongMenuRemove("Hapus dari riwayat", onRemove)) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }

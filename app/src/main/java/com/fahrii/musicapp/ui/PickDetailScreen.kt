@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -252,12 +253,13 @@ internal fun TrackRow(
     onClick: () -> Unit
 ) {
     val thumbShape = RoundedCornerShape(10.dp)
+    val songMenu = LocalSongMenu.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 8.dp),
+            .padding(start = 20.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(modifier = Modifier.width(28.dp), contentAlignment = Alignment.CenterStart) {
@@ -299,6 +301,9 @@ internal fun TrackRow(
         if (song.durationSeconds > 0) {
             Spacer(Modifier.width(12.dp))
             Text(formatDuration(song.durationSeconds), fontSize = 12.sp, color = Sonora.TextSecondary)
+        }
+        IconButton(onClick = { songMenu.show(song) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }

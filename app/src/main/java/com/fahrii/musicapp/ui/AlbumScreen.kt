@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -144,7 +145,7 @@ fun AlbumScreen(
                         isCurrent = song.url == currentSongUrl,
                         isPlaying = isPlaying,
                         onClick = { onPlay(songs, index) },
-                        modifier = Modifier.padding(horizontal = 16.dp)
+                        modifier = Modifier.padding(start = 16.dp, end = 4.dp)
                     )
                 }
             }
@@ -169,11 +170,13 @@ private fun AlbumTrackRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val songMenu = LocalSongMenu.current
+
     Row(
         modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -210,6 +213,9 @@ private fun AlbumTrackRow(
                 color = Sonora.TextSecondary,
                 modifier = Modifier.padding(start = 12.dp)
             )
+        }
+        IconButton(onClick = { songMenu.show(song) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }

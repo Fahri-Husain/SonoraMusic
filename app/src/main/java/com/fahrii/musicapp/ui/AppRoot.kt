@@ -93,6 +93,8 @@ fun AppRoot(
     libraryViewModel: LibraryViewModel
 ) {
     val navController = rememberNavController()
+    // Menu titik tiga di setiap lagu: layar memanggil songMenu.show(...), sheet-nya digambar di bawah
+    val songMenu = remember { SongMenuController() }
     val homeViewModel: HomeViewModel = viewModel()
     val searchViewModel: SearchViewModel = viewModel()
 
@@ -177,7 +179,10 @@ fun AppRoot(
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
 
-            CompositionLocalProvider(LocalBottomInset provides bottomInset) {
+            CompositionLocalProvider(
+                LocalBottomInset provides bottomInset,
+                LocalSongMenu provides songMenu
+            ) {
                 NavHost(
                     navController = navController,
                     startDestination = ROUTE_HOME,
@@ -396,6 +401,8 @@ fun AppRoot(
 
                     composable(ROUTE_NEW_RELEASES) {
                         val homeState by homeViewModel.state.collectAsState()
+                        // Lagu rilis baru belum punya durasi; diambil sekarang karena daftarnya yang menampilkan
+                        LaunchedEffect(homeState.newReleases.size) { homeViewModel.loadNewReleaseDurations() }
                         // Tampilan sama dengan detail Pilihan Cepat (cover mosaik, Putar/Acak, daftar bernomor)
                         PickDetailScreen(
                             pick = QuickPick(
@@ -435,12 +442,10 @@ fun AppRoot(
                                 songs = playHistory.sortedByDescending { it.plays }.map { it.song },
                                 onBack = { navController.popBackStack() },
                                 onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Paling Sering Diputar") },
-                                onRemove = { libraryViewModel.removeFromHistory(it.url) },
-                                removeIcon = AppIcons.Trash,
-                                removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                removeDescription = "Hapus dari riwayat",
                                 currentSongUrl = playerState.currentSong?.url,
-                                isPlaying = playerState.isPlaying
+                                isPlaying = playerState.isPlaying,
+                                removeLabel = "Hapus dari riwayat",
+                                onRemove = { libraryViewModel.removeFromHistory(it.url) }
                             )
                         }
                     }
@@ -452,10 +457,6 @@ fun AppRoot(
                                 songs = library.liked,
                                 onBack = { navController.popBackStack() },
                                 onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Lagu yang disukai") },
-                                onRemove = { libraryViewModel.toggleLike(it) },
-                                removeIcon = AppIcons.HeartFilled,
-                                removeTint = HeartColor,
-                                removeDescription = "Hapus dari disukai",
                                 currentSongUrl = playerState.currentSong?.url,
                                 isPlaying = playerState.isPlaying
                             )
@@ -625,6 +626,15 @@ fun AppRoot(
                         .navigationBarsPadding()
                 )
             }
+
+            // Bottom sheet menu titik tiga lagu (satu untuk semua layar)
+            SongMenuSheets(
+                controller = songMenu,
+                libraryViewModel = libraryViewModel,
+                playerViewModel = playerViewModel,
+                onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
+                onOpenAlbum = ::openAlbum
+            )
         }
     }
 }

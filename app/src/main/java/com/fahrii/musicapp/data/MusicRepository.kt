@@ -438,6 +438,38 @@ object MusicRepository {
     }
 
     private val searchCache = ConcurrentHashMap<String, String>()
+    private val durationCache = ConcurrentHashMap<String, Long>()
+
+    /**
+     * Durasi (detik) lagu yang akan diputar untuk [query]: hasil pertama pencarian YouTube Music,
+     * sama dengan yang dipilih [findVideoUrlBlocking], jadi menit yang tampil cocok dengan yang
+     * terdengar. Null kalau tidak ada hasil atau durasinya tidak diketahui. Melempar exception
+     * kalau pencarian gagal.
+     */
+    suspend fun findSongDuration(query: String): Long? = withContext(Dispatchers.IO) {
+        val cached = durationCache[query]
+        if (cached != null) return@withContext cached
+
+        ensureInit()
+        val extractor = ServiceList.YouTube.getSearchExtractor(
+            query,
+            listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),
+            ""
+        )
+        extractor.fetchPage()
+
+        val seconds = extractor.initialPage.items
+            .filterIsInstance<StreamInfoItem>()
+            .firstOrNull()
+            ?.duration
+            ?: -1L
+        if (seconds > 0) {
+            durationCache[query] = seconds
+            seconds
+        } else {
+            null
+        }
+    }
 
     /**
      * Cari lagu di YouTube Music dan kembalikan URL video hasil pertama.

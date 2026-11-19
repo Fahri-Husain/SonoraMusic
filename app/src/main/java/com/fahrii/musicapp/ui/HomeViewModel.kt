@@ -13,8 +13,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 data class QuickPick(
     val label: String,
@@ -55,6 +58,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val subscribers: StateFlow<Map<String, Long>> = artistSubscribers.asStateFlow()
 
     private var quickPicksJob: Job? = null
+    private var durationsJob: Job? = null
 
     init {
         refresh()
@@ -90,6 +94,45 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         loadQuickPicks()
+    }
+
+    /**
+     * Rilis Baru dibuat dari album, yang datanya tidak menyertakan durasi. Dipanggil saat daftar
+     * lengkapnya dibuka: durasi tiap lagu diambil dari hasil pertama pencarian YouTube Music (lagu
+     * yang sama dengan yang diputar), beberapa sekaligus karena tiap pencarian cukup berat, lalu
+     * diisikan satu per satu begitu didapat. Yang sudah punya durasi dilewati.
+     */
+    fun loadNewReleaseDurations() {
+        if (durationsJob?.isActive == true) return
+        val pending = _state.value.newReleases.filter { it.durationSeconds <= 0 }
+        if (pending.isEmpty()) return
+
+        durationsJob = viewModelScope.launch {
+            val gate = Semaphore(2)
+            pending.forEach { song ->
+                launch {
+                    gate.withPermit {
+                        val query = ChartRepository.searchQuery(song.title, song.artist)
+                        var seconds: Long? = null
+                        // Sekali coba ulang kalau gagal (mis. koneksi putus sebentar)
+                        for (attempt in 0..1) {
+                            val result = runCatching { MusicRepository.findSongDuration(query) }
+                            if (result.isSuccess) {
+                                seconds = result.getOrNull()
+                                break
+                            }
+                            delay(1500)
+                        }
+                        val found = seconds ?: return@withPermit
+                        _state.update { s ->
+                            s.copy(newReleases = s.newReleases.map {
+                                if (it.url == song.url) it.copy(durationSeconds = found) else it
+                            })
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** Ambil jumlah subscriber tiap artis (profil yang sama dengan halaman artis), paralel. */

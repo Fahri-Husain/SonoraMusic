@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
@@ -423,12 +424,13 @@ private fun PopularSongRow(
     onClick: () -> Unit
 ) {
     val thumbShape = RoundedCornerShape(8.dp)
+    val songMenu = LocalSongMenu.current
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 7.dp),
+            .padding(start = 20.dp, end = 4.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -467,6 +469,9 @@ private fun PopularSongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+        }
+        IconButton(onClick = { songMenu.show(song) }) {
+            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
         }
     }
 }
