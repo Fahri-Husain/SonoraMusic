@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.sin
 
 /**
@@ -46,8 +47,12 @@ class CrossfadeManager(
 
     private var fading = false
     private var fadeDurationMs = 0L
-    private var fadeElapsedMs = 0L
     private var lastFadeTickMs = 0L
+
+    // Posisi awal masing-masing pemutar saat fade mulai. Kemajuan fade dibaca dari posisi putar
+    // yang sebenarnya (jam audio), bukan dari stopwatch, supaya selalu sinkron dengan suara.
+    private var outgoingStartMs = 0L
+    private var incomingStartMs = 0L
     private var fadeStartedAtMs = 0L
 
     // True selama kita sendiri memindahkan pemutar utama ke lagu berikutnya
@@ -209,7 +214,8 @@ class CrossfadeManager(
 
         fading = true
         fadeDurationMs = remaining // sisa lagu lama: fade selesai tepat saat lagu lama habis
-        fadeElapsedMs = 0L
+        outgoingStartMs = position
+        incomingStartMs = player.currentPosition
         lastFadeTickMs = SystemClock.elapsedRealtime()
         fadeStartedAtMs = lastFadeTickMs
     }
@@ -221,38 +227,33 @@ class CrossfadeManager(
         val dt = (now - lastFadeTickMs).coerceAtLeast(0L)
         lastFadeTickMs = now
 
-        // Waktu fade hanya berjalan selagi pengguna tidak menjeda dan lagu baru benar-benar sudah
-        // terdengar. Kalau lagu baru masih memuat (stream belum siap), lagu lama tetap penuh
-        // supaya tidak ada celah senyap atau lagu baru yang muncul tiba-tiba di tengah fade.
-        val incomingReady = player.playbackState == Player.STATE_READY
-
-        // Lagu lama sudah habis sebelum lagu baru siap: tidak ada lagi yang perlu dipudarkan,
-        // langsung normal begitu lagu baru terdengar
-        if (incomingReady && tail?.playbackState == Player.STATE_ENDED) {
-            finishFade()
-            return
+        // Kemajuan tiap lagu dihitung dari posisi putarnya sendiri. Jadi:
+        // - lagu lama selalu mencapai volume 0 tepat di akhir lagunya (tidak terpotong),
+        // - lagu baru baru naik setelah benar-benar terdengar (stream lambat tidak bikin lonjakan),
+        // - jeda/lanjut ikut otomatis karena posisi berhenti bergerak.
+        val incoming = progress(player.currentPosition - incomingStartMs)
+        val outgoingPlayer = tail
+        val outgoing = when {
+            outgoingPlayer == null || outgoingPlayer.playbackState == Player.STATE_ENDED -> 1f
+            else -> progress(outgoingPlayer.currentPosition - outgoingStartMs)
         }
-        if (player.playWhenReady && incomingReady) fadeElapsedMs += dt
 
-        val linear = (fadeElapsedMs.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
+        // Equal-power murni (sin/cos): tenaga suara total rata, tanpa easing tambahan yang
+        // memadatkan fade ke bagian tengah.
+        player.volume = smooth(player.volume, sin(incoming * HALF_PI), dt)
+        outgoingPlayer?.let { it.volume = smooth(it.volume, cos(outgoing * HALF_PI), dt) }
 
-        // Smoothstep: awal dan akhir fade landai (tidak ada lonjakan volume di ujung kurva),
-        // lalu equal-power supaya total tenaga suara tetap rata di tengah.
-        val eased = linear * linear * (3f - 2f * linear)
-        val angle = eased * HALF_PI
-        val targetIn = sin(angle)
-        val targetOut = cos(angle)
-
-        // Volume dihaluskan per tick supaya tidak ada "tangga" yang terdengar
-        // (volume ExoPlayer diterapkan per buffer audio).
-        player.volume = smooth(player.volume, targetIn)
-        tail?.let { it.volume = smooth(it.volume, targetOut) }
-
-        if (linear >= 1f) finishFade()
+        if (incoming >= 1f && outgoing >= 1f) finishFade()
     }
 
-    private fun smooth(current: Float, target: Float): Float =
-        current + (target - current) * VOLUME_SMOOTHING
+    private fun progress(playedMs: Long): Float =
+        (playedMs.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
+
+    // Penghalus bergantung waktu (bukan per tick), supaya hasilnya sama walau tick sempat telat
+    private fun smooth(current: Float, target: Float, dtMs: Long): Float {
+        val alpha = 1f - exp(-dtMs / SMOOTH_TAU_MS)
+        return current + (target - current) * alpha
+    }
 
     private fun finishFade() {
         fading = false
@@ -271,8 +272,8 @@ class CrossfadeManager(
         // ~60 langkah volume per detik; 50 ms (20/detik) terdengar bergelombang
         const val FADE_TICK_MS = 16L
 
-        // Seberapa cepat volume mengejar target tiap tick (0..1)
-        const val VOLUME_SMOOTHING = 0.5f
+        // Konstanta waktu penghalus volume (ms); kecil = cepat mengikuti target
+        const val SMOOTH_TAU_MS = 24f
 
         // Pemutar kedua mulai disiapkan sekian ms sebelum titik crossfade
         const val PREPARE_AHEAD_MS = 8_000L
