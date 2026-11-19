@@ -23,6 +23,10 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animate
@@ -103,7 +107,13 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.LyricLine
 import com.fahrii.musicapp.data.LyricsRepository
+import kotlin.math.abs
 import kotlin.math.roundToInt
+
+// Durasi transisi saat lagu berganti (ms)
+private const val SONG_CHANGE_BG_MS = 700
+private const val SONG_CHANGE_COVER_MS = 520
+private const val SONG_CHANGE_TEXT_MS = 420
 
 @Composable
 fun NowPlayingScreen(
@@ -273,16 +283,30 @@ fun NowPlayingScreen(
                 }
             )
         }
-        AsyncImage(
-            model = song.thumbnailUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            colorFilter = glowFilter,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(640.dp)
-                .blur(60.dp)
-        )
+        // Saat lagu berganti, latar lama memudar pelan sambil latar baru muncul (crossfade),
+        // jadi warna di belakang berpindah halus seperti di Apple Music.
+        AnimatedContent(
+            targetState = song,
+            contentKey = { it.url },
+            transitionSpec = {
+                fadeIn(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) togetherWith
+                        fadeOut(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) using
+                        SizeTransform(clip = false)
+            },
+            label = "nowPlayingBackground",
+            modifier = Modifier.fillMaxWidth().height(640.dp)
+        ) { s ->
+            AsyncImage(
+                model = s.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                colorFilter = glowFilter,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(640.dp)
+                    .blur(60.dp)
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -361,53 +385,131 @@ fun NowPlayingScreen(
                 contentAlignment = Alignment.Center
             ) {
                 val side = minOf(maxWidth * 0.9f, maxHeight)
-                Box(modifier = Modifier.size(side)) {
-                    AsyncImage(
-                        model = song.thumbnailUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(CircleShape)
-                            .background(Sonora.SurfaceHigh)
-                            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                    )
-                    // Tambah ke playlist: tombol kecil di tepi cover
-                    RoundButton(
-                        onClick = { showAddDialog = true },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = side * 0.06f, bottom = side * 0.06f)
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.PlaylistAdd,
-                            contentDescription = "Tambah ke playlist",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
+                val sidePx = with(LocalDensity.current) { side.toPx() }
+                // Geser cover: kanan = lagu berikutnya, kiri = lagu sebelumnya. Cover ikut bergerak
+                // mengikuti jari (agak berat), lalu kembali ke tengah saat dilepas.
+                var coverDragX by remember { mutableFloatStateOf(0f) }
+                Box(
+                    modifier = Modifier
+                        .size(side)
+                        .graphicsLayer {
+                            translationX = coverDragX
+                            alpha = 1f - (abs(coverDragX) / sidePx).coerceIn(0f, 0.4f)
+                        }
+                        .draggable(
+                            orientation = Orientation.Horizontal,
+                            state = rememberDraggableState { delta ->
+                                coverDragX += delta * 0.7f
+                            },
+                            onDragStopped = { velocity ->
+                                val dx = coverDragX
+                                val farEnough = abs(dx) > sidePx * 0.2f
+                                val fastEnough = abs(velocity) > 1200f && velocity * dx > 0f
+                                if (farEnough || fastEnough) {
+                                    if (dx > 0f) {
+                                        if (state.hasNext) viewModel.next()
+                                    } else {
+                                        viewModel.previous()
+                                    }
+                                }
+                                animate(
+                                    initialValue = coverDragX,
+                                    targetValue = 0f,
+                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                ) { value, _ -> coverDragX = value }
+                            }
                         )
+                ) {
+                    // Cover lama mengecil sedikit sambil memudar, cover baru membesar dari ukuran
+                    // sedikit lebih kecil sambil muncul, bukan langsung berganti.
+                    AnimatedContent(
+                        targetState = song,
+                        contentKey = { it.url },
+                        transitionSpec = {
+                            (fadeIn(tween(SONG_CHANGE_COVER_MS, delayMillis = 80, easing = FastOutSlowInEasing)) +
+                                    scaleIn(
+                                        initialScale = 0.9f,
+                                        animationSpec = tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)
+                                    )) togetherWith
+                                    (fadeOut(tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)) +
+                                            scaleOut(
+                                                targetScale = 0.94f,
+                                                animationSpec = tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)
+                                            )) using
+                                    SizeTransform(clip = false)
+                        },
+                        label = "nowPlayingCover",
+                        modifier = Modifier.fillMaxSize()
+                    ) { s ->
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AsyncImage(
+                                model = s.thumbnailUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .background(Sonora.SurfaceHigh)
+                                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                            )
+                            // Tambah ke playlist: tombol kecil di tepi cover, ikut beranimasi bersama cover
+                            RoundButton(
+                                onClick = { showAddDialog = true },
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(end = side * 0.06f, bottom = side * 0.06f)
+                            ) {
+                                Icon(
+                                    imageVector = AppIcons.PlaylistAdd,
+                                    contentDescription = "Tambah ke playlist",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            Text(
-                text = song.title,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = song.artist,
-                fontSize = 15.sp,
-                color = inactive,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
-                textAlign = TextAlign.Center
-            )
+            // Judul dan artis: yang lama memudar sambil naik sedikit, yang baru muncul dari bawah
+            AnimatedContent(
+                targetState = song,
+                contentKey = { it.url },
+                transitionSpec = {
+                    (fadeIn(tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
+                            (fadeOut(tween(SONG_CHANGE_TEXT_MS / 2, easing = FastOutSlowInEasing)) +
+                                    slideOutVertically(tween(SONG_CHANGE_TEXT_MS, easing = FastOutSlowInEasing)) { -it / 3 }) using
+                            SizeTransform(clip = false)
+                },
+                label = "nowPlayingTitle",
+                modifier = Modifier.fillMaxWidth()
+            ) { s ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = s.title,
+                        fontSize = 26.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = s.artist,
+                        fontSize = 15.sp,
+                        color = inactive,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
             state.error?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(text = it, fontSize = 13.sp, color = Color(0xFFFF6B6B), textAlign = TextAlign.Center)
