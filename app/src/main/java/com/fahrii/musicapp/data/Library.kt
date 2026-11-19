@@ -1,6 +1,7 @@
 package com.fahrii.musicapp.data
 
 import android.content.Context
+import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +20,11 @@ import java.util.UUID
 data class Playlist(
     val id: String,
     val name: String,
-    val songs: List<Song>
+    val songs: List<Song>,
+    /** Waktu playlist dibuat (epoch ms); 0 untuk playlist lama yang belum mencatatnya. */
+    val createdAt: Long = 0L,
+    /** Path file thumbnail pilihan pengguna (di penyimpanan aplikasi); null = pakai cover lagu. */
+    val thumbnailPath: String? = null
 )
 
 data class LibraryState(
@@ -27,14 +32,23 @@ data class LibraryState(
     val playlists: List<Playlist> = emptyList()
 )
 
-class LibraryRepository private constructor(context: Context) {
+class LibraryRepository private constructor(private val context: Context) {
 
     private val file = File(context.filesDir, "library.json")
+    private val coversDir = File(context.filesDir, "playlist_covers")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val saveMutex = Mutex()
 
+    // True kalau ada playlist lama (dibuat sebelum waktu pembuatan dicatat) yang diberi tanggal di load()
+    private var backfilledCreatedAt = false
+
     private val _state = MutableStateFlow(load())
     val state: StateFlow<LibraryState> = _state.asStateFlow()
+
+    init {
+        // Simpan tanggal yang baru diisi, supaya tidak berubah lagi tiap aplikasi dibuka
+        if (backfilledCreatedAt) persist()
+    }
 
     fun toggleLike(song: Song) {
         _state.update { s ->
@@ -53,14 +67,68 @@ class LibraryRepository private constructor(context: Context) {
         val playlist = Playlist(
             id = UUID.randomUUID().toString(),
             name = cleanName,
-            songs = listOfNotNull(firstSong)
+            songs = listOfNotNull(firstSong),
+            createdAt = System.currentTimeMillis()
         )
         _state.update { it.copy(playlists = it.playlists + playlist) }
         persist()
     }
 
     fun deletePlaylist(id: String) {
+        val thumb = _state.value.playlists.firstOrNull { it.id == id }?.thumbnailPath
         _state.update { s -> s.copy(playlists = s.playlists.filterNot { it.id == id }) }
+        thumb?.let { runCatching { File(it).delete() } }
+        persist()
+    }
+
+    fun renamePlaylist(id: String, name: String) {
+        val cleanName = name.trim()
+        if (cleanName.isEmpty()) return
+        _state.update { s ->
+            s.copy(playlists = s.playlists.map { p -> if (p.id == id) p.copy(name = cleanName) else p })
+        }
+        persist()
+    }
+
+    /**
+     * Pakai gambar [uri] (hasil pilih dari galeri) sebagai thumbnail playlist. Gambar disalin ke
+     * penyimpanan aplikasi supaya tetap ada walau izin akses ke galeri dicabut.
+     */
+    fun setPlaylistThumbnail(id: String, uri: Uri) {
+        scope.launch {
+            val target = runCatching {
+                coversDir.mkdirs()
+                val out = File(coversDir, "${id}_${System.currentTimeMillis()}.jpg")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    out.outputStream().use { input.copyTo(it) }
+                } ?: return@launch
+                out
+            }.getOrNull() ?: return@launch
+
+            val old = _state.value.playlists.firstOrNull { it.id == id }?.thumbnailPath
+            _state.update { s ->
+                s.copy(playlists = s.playlists.map { p ->
+                    if (p.id == id) p.copy(thumbnailPath = target.absolutePath) else p
+                })
+            }
+            old?.let { runCatching { File(it).delete() } }
+            persist()
+        }
+    }
+
+    /** Pindahkan lagu di posisi [from] ke posisi [to] (urutan kustom). */
+    fun moveInPlaylist(playlistId: String, from: Int, to: Int) {
+        _state.update { s ->
+            s.copy(playlists = s.playlists.map { p ->
+                if (p.id != playlistId || from !in p.songs.indices || to !in p.songs.indices || from == to) {
+                    p
+                } else {
+                    val list = p.songs.toMutableList()
+                    list.add(to, list.removeAt(from))
+                    p.copy(songs = list)
+                }
+            })
+        }
         persist()
     }
 
@@ -107,13 +175,18 @@ class LibraryRepository private constructor(context: Context) {
         return try {
             val root = JSONObject(file.readText())
             val liked = root.optJSONArray("liked").toSongs()
+            val now = System.currentTimeMillis()
             val playlists = root.optJSONArray("playlists")?.let { arr ->
                 List(arr.length()) { i ->
                     val o = arr.getJSONObject(i)
                     Playlist(
                         id = o.getString("id"),
                         name = o.getString("name"),
-                        songs = o.optJSONArray("songs").toSongs()
+                        songs = o.optJSONArray("songs").toSongs(),
+                        // Playlist lama tidak punya waktu pembuatan: pakai waktu pertama kali dimuat
+                        createdAt = o.optLong("createdAt", 0L).takeIf { it > 0L }
+                            ?: now.also { backfilledCreatedAt = true },
+                        thumbnailPath = if (o.isNull("thumbnailPath")) null else o.optString("thumbnailPath").ifBlank { null }
                     )
                 }
             } ?: emptyList()
@@ -169,6 +242,8 @@ private fun LibraryState.toJson(): JSONObject = JSONObject().apply {
                 put("id", p.id)
                 put("name", p.name)
                 put("songs", p.songs.toJsonArray())
+                put("createdAt", p.createdAt)
+                put("thumbnailPath", p.thumbnailPath ?: JSONObject.NULL)
             })
         }
     })

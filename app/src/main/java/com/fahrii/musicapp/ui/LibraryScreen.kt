@@ -220,7 +220,8 @@ fun LibraryScreen(
                                 onClick = { onOpenPlaylist(playlist.id) },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                val cover = playlist.songs.firstOrNull()?.thumbnailUrl
+                                val cover = playlist.thumbnailPath?.let { android.net.Uri.fromFile(java.io.File(it)).toString() }
+                                    ?: playlist.songs.firstOrNull()?.thumbnailUrl
                                 if (cover != null) {
                                     AsyncImage(
                                         model = cover,

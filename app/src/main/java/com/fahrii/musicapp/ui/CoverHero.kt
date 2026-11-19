@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -56,6 +57,8 @@ import coil.compose.AsyncImage
 fun CoverCollageHeader(
     urls: List<String?>,
     modifier: Modifier = Modifier,
+    /** Warna tujuan pudar di tepi bawah cover; samakan dengan latar halaman. */
+    fadeColor: Color = Sonora.Background,
     overlay: @Composable ColumnScope.() -> Unit
 ) {
     Box(
@@ -87,8 +90,8 @@ fun CoverCollageHeader(
                     Brush.verticalGradient(
                         0f to Color.Transparent,
                         0.42f to Color.Transparent,
-                        0.70f to Sonora.Background.copy(alpha = 0.65f),
-                        1f to Sonora.Background
+                        0.70f to fadeColor.copy(alpha = 0.65f),
+                        1f to fadeColor
                     )
                 )
         )
@@ -120,7 +123,10 @@ fun HeroActions(
     enabled: Boolean,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    playLabel: String = "Putar",
+    /** Kalau diisi, bulatan Unduh ikut ditampilkan di kanan pil Putar. */
+    onDownload: (() -> Unit)? = null
 ) {
     Row(
         modifier = modifier
@@ -154,7 +160,20 @@ fun HeroActions(
         ) {
             Icon(AppIcons.Play, contentDescription = null, tint = Color.Black, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Putar", color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(playLabel, color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        }
+        if (onDownload != null) {
+            Spacer(Modifier.width(14.dp))
+            Box(
+                modifier = Modifier
+                    .size(54.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable(onClick = onDownload),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(AppIcons.Download, contentDescription = "Unduh", tint = Color.White, modifier = Modifier.size(22.dp))
+            }
         }
     }
 }
@@ -171,7 +190,9 @@ fun BoxScope.HeroTopBars(
     listState: LazyListState,
     titleBottom: Float,
     backdrop: GlassBackdrop,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    /** Ruang kosong di kanan bar atas untuk tombol yang ditaruh layar sendiri (supaya judul tidak tertimpa). */
+    trailingInset: Dp = 0.dp
 ) {
     val statusBarBottom = WindowInsets.statusBars.getTop(LocalDensity.current).toFloat()
     val titleBottomState = rememberUpdatedState(titleBottom)
@@ -200,7 +221,7 @@ fun BoxScope.HeroTopBars(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(start = 12.dp, top = 8.dp, end = 16.dp, bottom = 24.dp),
+                .padding(start = 12.dp, top = 8.dp, end = 16.dp + trailingInset, bottom = 24.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(

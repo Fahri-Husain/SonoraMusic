@@ -1,6 +1,7 @@
 package com.fahrii.musicapp.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import com.fahrii.musicapp.data.AlbumRepository
 import com.fahrii.musicapp.data.ArtistImageRepository
@@ -53,5 +54,12 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeFromPlaylist(playlistId: String, songUrl: String) =
         repo.removeFromPlaylist(playlistId, songUrl)
+
+    fun renamePlaylist(id: String, name: String) = repo.renamePlaylist(id, name)
+
+    fun setPlaylistThumbnail(id: String, uri: Uri) = repo.setPlaylistThumbnail(id, uri)
+
+    fun moveInPlaylist(playlistId: String, from: Int, to: Int) =
+        repo.moveInPlaylist(playlistId, from, to)
 
 }

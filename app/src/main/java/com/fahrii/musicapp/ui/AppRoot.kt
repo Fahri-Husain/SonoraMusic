@@ -470,25 +470,37 @@ fun AppRoot(
                     ) { entry ->
                         val id = entry.arguments?.getString("id")
                         val playlist = library.playlists.firstOrNull { it.id == id }
+                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat nama album ditemukan
+                        val songAlbums by libraryViewModel.songAlbums.collectAsState()
+                        val likedUrls = remember(library.liked) { library.liked.map { it.url }.toSet() }
 
                         if (playlist == null) {
                             LaunchedEffect(Unit) { navController.popBackStack() }
                         } else {
-                            Box(Modifier.fillMaxSize().statusBarsPadding()) {
-                                SongListScreen(
-                                    title = playlist.name,
-                                    songs = playlist.songs,
-                                    onBack = { navController.popBackStack() },
-                                    onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"") },
-                                    onRemove = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
-                                    removeIcon = AppIcons.Trash,
-                                    removeTint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    removeDescription = "Hapus dari playlist",
-                                    currentSongUrl = playerState.currentSong?.url,
-                                    isPlaying = playerState.isPlaying,
-                                    onDeleteList = { libraryViewModel.deletePlaylist(playlist.id) }
-                                )
-                            }
+                            // Cover memenuhi layar sampai bawah status bar, jadi tanpa statusBarsPadding
+                            PlaylistScreen(
+                                playlist = playlist,
+                                playlists = library.playlists,
+                                likedUrls = likedUrls,
+                                songAlbums = songAlbums,
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying,
+                                onBack = { navController.popBackStack() },
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"") },
+                                onRemoveSong = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
+                                onMoveSong = { from, to -> libraryViewModel.moveInPlaylist(playlist.id, from, to) },
+                                onRename = { libraryViewModel.renamePlaylist(playlist.id, it) },
+                                onSetThumbnail = { libraryViewModel.setPlaylistThumbnail(playlist.id, it) },
+                                onDeletePlaylist = { libraryViewModel.deletePlaylist(playlist.id) },
+                                onAddToQueue = { playerViewModel.addToQueue(it, "Playlist \"${playlist.name}\"") },
+                                onPlayNext = playerViewModel::playNext,
+                                onToggleLike = libraryViewModel::toggleLike,
+                                onAddToPlaylist = { target, song -> libraryViewModel.addToPlaylist(target.id, song) },
+                                onCreatePlaylistWith = { name, song -> libraryViewModel.createPlaylist(name, song) },
+                                onRequestAlbum = libraryViewModel::requestSongAlbum,
+                                onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
+                                onOpenAlbum = ::openAlbum
+                            )
                         }
                     }
 

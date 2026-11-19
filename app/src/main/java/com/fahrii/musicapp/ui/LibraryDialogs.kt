@@ -31,9 +31,10 @@ fun NameDialog(
     title: String,
     confirmText: String,
     onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    initialName: String = ""
 ) {
-    var name by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf(initialName) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

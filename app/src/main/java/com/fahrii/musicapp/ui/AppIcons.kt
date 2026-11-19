@@ -33,6 +33,20 @@ import com.adamglin.phosphoricons.fill.Gear
 import com.adamglin.phosphoricons.fill.House
 import com.adamglin.phosphoricons.fill.SkipBack
 import com.adamglin.phosphoricons.fill.SkipForward
+import com.adamglin.phosphoricons.bold.CaretUp
+import com.adamglin.phosphoricons.bold.SortAscending
+import com.adamglin.phosphoricons.bold.X
+import com.adamglin.phosphoricons.fill.ArrowsClockwise
+import com.adamglin.phosphoricons.fill.ClockClockwise
+import com.adamglin.phosphoricons.fill.Disc
+import com.adamglin.phosphoricons.fill.ImageSquare
+import com.adamglin.phosphoricons.fill.Pencil
+import com.adamglin.phosphoricons.fill.PlayCircle
+import com.adamglin.phosphoricons.fill.Playlist
+import com.adamglin.phosphoricons.fill.Radio
+import com.adamglin.phosphoricons.fill.ShareNetwork
+import com.adamglin.phosphoricons.fill.Trash as TrashFill
+import com.adamglin.phosphoricons.fill.Users
 
 val HeartColor = Color(0xFFFF2D55) // pink khas iOS
 
@@ -68,4 +82,22 @@ object AppIcons {
     val Trending: ImageVector = PhosphorIcons.Bold.TrendUp
     val Download: ImageVector = PhosphorIcons.Bold.ArrowCircleDown
     val MoreVert: ImageVector = PhosphorIcons.Bold.DotsThreeVertical
+
+    // Halaman playlist: tombol kecil (Bold) dan ikon menu bottom sheet (Fill)
+    val Sort: ImageVector = PhosphorIcons.Bold.SortAscending
+    val MoveUp: ImageVector = PhosphorIcons.Bold.CaretUp
+    val MoveDown: ImageVector = PhosphorIcons.Bold.CaretDown
+    val Close: ImageVector = PhosphorIcons.Bold.X
+
+    val Edit: ImageVector = PhosphorIcons.Fill.Pencil
+    val EditImage: ImageVector = PhosphorIcons.Fill.ImageSquare
+    val Queue: ImageVector = PhosphorIcons.Fill.Playlist
+    val Sync: ImageVector = PhosphorIcons.Fill.ArrowsClockwise
+    val Refresh: ImageVector = PhosphorIcons.Fill.ClockClockwise
+    val DeleteFilled: ImageVector = PhosphorIcons.Fill.TrashFill
+    val Share: ImageVector = PhosphorIcons.Fill.ShareNetwork
+    val Artist: ImageVector = PhosphorIcons.Fill.Users
+    val Album: ImageVector = PhosphorIcons.Fill.Disc
+    val Radio: ImageVector = PhosphorIcons.Fill.Radio
+    val PlayNext: ImageVector = PhosphorIcons.Fill.PlayCircle
 }

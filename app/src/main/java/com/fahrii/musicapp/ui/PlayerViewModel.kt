@@ -150,6 +150,30 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         if (c != null) startQueue(c, items, index) else pendingQueue = items to index
     }
 
+    /**
+     * Tambahkan [songs] ke akhir antrian yang sedang berjalan. Kalau belum ada antrian,
+     * langsung diputar sebagai antrian baru.
+     */
+    fun addToQueue(songs: List<Song>, source: String? = null) {
+        if (songs.isEmpty()) return
+        val c = controller
+        if (c == null || c.mediaItemCount == 0) {
+            playQueue(songs, 0, source)
+            return
+        }
+        c.addMediaItems(songs.map { it.toMediaItem() })
+    }
+
+    /** Sisipkan [song] tepat setelah lagu yang sedang diputar. */
+    fun playNext(song: Song) {
+        val c = controller
+        if (c == null || c.mediaItemCount == 0) {
+            playQueue(listOf(song), 0)
+            return
+        }
+        c.addMediaItem(c.currentMediaItemIndex + 1, song.toMediaItem())
+    }
+
     fun togglePlayPause() {
         val c = controller ?: return
         if (c.isPlaying) {
