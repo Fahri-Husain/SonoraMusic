@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -386,85 +387,152 @@ fun NowPlayingScreen(
             ) {
                 val side = minOf(maxWidth * 0.9f, maxHeight)
                 val sidePx = with(LocalDensity.current) { side.toPx() }
-                // Geser cover: kanan = lagu berikutnya, kiri = lagu sebelumnya. Cover ikut bergerak
-                // mengikuti jari (agak berat), lalu kembali ke tengah saat dilepas.
+                // Geser cover: kanan ke kiri = lagu berikutnya, kiri ke kanan = lagu sebelumnya. Cover
+                // lagu tujuan ikut terlihat masuk dari sisi layar mengikuti jari (seperti carousel). Dilepas cukup jauh /
+                // cukup cepat -> meluncur penuh ke lagu tujuan; kalau belum -> kembali ke tengah.
+                val nextSong = state.nextSong
+                val previousSong = state.previousSong
+                val hasNextSong by rememberUpdatedState(nextSong != null)
+                val hasPreviousSong by rememberUpdatedState(previousSong != null)
+                val currentUrl by rememberUpdatedState(song.url)
+                val spacingPx = sidePx + with(LocalDensity.current) { 24.dp.toPx() }
                 var coverDragX by remember { mutableFloatStateOf(0f) }
+                var committedFromUrl by remember { mutableStateOf<String?>(null) }
+                var swipeCommitting by remember { mutableStateOf(false) }
+
+                // Setelah lagu berganti lewat geseran, cover baru sudah tepat di tengah: reset posisi geser
+                LaunchedEffect(song.url) {
+                    coverDragX = 0f
+                    committedFromUrl = null
+                }
+                // Selama menunggu lagu berganti, posisi tetap di sisi tujuan; begitu lagu berganti
+                // posisi langsung 0 (di frame yang sama) supaya tidak ada kedipan.
+                fun shiftX(): Float =
+                    if (committedFromUrl != null && song.url != committedFromUrl) 0f else coverDragX
+
                 Box(
                     modifier = Modifier
                         .size(side)
-                        .graphicsLayer {
-                            translationX = coverDragX
-                            alpha = 1f - (abs(coverDragX) / sidePx).coerceIn(0f, 0.4f)
-                        }
                         .draggable(
                             orientation = Orientation.Horizontal,
                             state = rememberDraggableState { delta ->
-                                coverDragX += delta * 0.7f
+                                if (swipeCommitting) return@rememberDraggableState
+                                val target = coverDragX + delta
+                                // Tidak ada lagu di arah itu: geseran terasa berat dan tidak menampilkan apa-apa
+                                val hasTarget = if (target < 0f) hasNextSong else hasPreviousSong
+                                val factor = if (hasTarget) 1f else 0.25f
+                                coverDragX = (coverDragX + delta * factor).coerceIn(-spacingPx, spacingPx)
                             },
                             onDragStopped = { velocity ->
+                                if (swipeCommitting) return@draggable
                                 val dx = coverDragX
-                                val farEnough = abs(dx) > sidePx * 0.2f
-                                val fastEnough = abs(velocity) > 1200f && velocity * dx > 0f
-                                if (farEnough || fastEnough) {
-                                    if (dx > 0f) {
-                                        if (state.hasNext) viewModel.next()
-                                    } else {
-                                        viewModel.previous()
+                                val goingNext = dx < 0f
+                                val hasTarget = if (goingNext) hasNextSong else hasPreviousSong
+                                val farEnough = abs(dx) > spacingPx * 0.3f
+                                val fastEnough = abs(velocity) > 1200f && velocity * dx > 0f && abs(dx) > spacingPx * 0.08f
+                                if (hasTarget && (farEnough || fastEnough)) {
+                                    swipeCommitting = true
+                                    val startUrl = currentUrl
+                                    committedFromUrl = startUrl
+                                    animate(
+                                        initialValue = coverDragX,
+                                        targetValue = if (goingNext) -spacingPx else spacingPx,
+                                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                                    ) { value, _ -> coverDragX = value }
+                                    if (goingNext) viewModel.next() else viewModel.skipToPrevious()
+                                    val changed = withTimeoutOrNull(1_500) {
+                                        snapshotFlow { currentUrl }.first { it != startUrl }
                                     }
+                                    if (changed == null) {
+                                        // Lagu tidak berganti (mis. gagal): kembalikan cover ke tengah
+                                        committedFromUrl = null
+                                        animate(
+                                            initialValue = coverDragX,
+                                            targetValue = 0f,
+                                            animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                        ) { value, _ -> coverDragX = value }
+                                    }
+                                    swipeCommitting = false
+                                } else {
+                                    animate(
+                                        initialValue = coverDragX,
+                                        targetValue = 0f,
+                                        animationSpec = tween(320, easing = FastOutSlowInEasing)
+                                    ) { value, _ -> coverDragX = value }
                                 }
-                                animate(
-                                    initialValue = coverDragX,
-                                    targetValue = 0f,
-                                    animationSpec = tween(320, easing = FastOutSlowInEasing)
-                                ) { value, _ -> coverDragX = value }
                             }
                         )
                 ) {
-                    // Cover lama mengecil sedikit sambil memudar, cover baru membesar dari ukuran
-                    // sedikit lebih kecil sambil muncul, bukan langsung berganti.
-                    AnimatedContent(
-                        targetState = song,
-                        contentKey = { it.url },
-                        transitionSpec = {
-                            (fadeIn(tween(SONG_CHANGE_COVER_MS, delayMillis = 80, easing = FastOutSlowInEasing)) +
-                                    scaleIn(
-                                        initialScale = 0.9f,
-                                        animationSpec = tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)
-                                    )) togetherWith
-                                    (fadeOut(tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)) +
-                                            scaleOut(
-                                                targetScale = 0.94f,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { translationX = shiftX() }
+                    ) {
+                        // Cover lagu tujuan: berikutnya masuk dari kanan (geser ke kiri), sebelumnya dari kiri
+                        SwipeCoverPeek(
+                            thumbnailUrl = nextSong?.thumbnailUrl,
+                            visible = nextSong != null,
+                            offsetPx = spacingPx,
+                            shown = { shiftX() < 0f }
+                        )
+                        SwipeCoverPeek(
+                            thumbnailUrl = previousSong?.thumbnailUrl,
+                            visible = previousSong != null,
+                            offsetPx = -spacingPx,
+                            shown = { shiftX() > 0f }
+                        )
+
+                        // Cover lama mengecil sedikit sambil memudar, cover baru membesar dari ukuran
+                        // sedikit lebih kecil sambil muncul, bukan langsung berganti. Kalau pergantian
+                        // berasal dari geseran, tidak ada animasi tambahan (geserannya sudah animasi).
+                        AnimatedContent(
+                            targetState = song,
+                            contentKey = { it.url },
+                            transitionSpec = {
+                                if (committedFromUrl != null) {
+                                    EnterTransition.None togetherWith ExitTransition.None
+                                } else {
+                                    (fadeIn(tween(SONG_CHANGE_COVER_MS, delayMillis = 80, easing = FastOutSlowInEasing)) +
+                                            scaleIn(
+                                                initialScale = 0.9f,
                                                 animationSpec = tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)
-                                            )) using
-                                    SizeTransform(clip = false)
-                        },
-                        label = "nowPlayingCover",
-                        modifier = Modifier.fillMaxSize()
-                    ) { s ->
-                        Box(modifier = Modifier.fillMaxSize()) {
-                            AsyncImage(
-                                model = s.thumbnailUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape)
-                                    .background(Sonora.SurfaceHigh)
-                                    .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
-                            )
-                            // Tambah ke playlist: tombol kecil di tepi cover, ikut beranimasi bersama cover
-                            RoundButton(
-                                onClick = { showAddDialog = true },
-                                modifier = Modifier
-                                    .align(Alignment.BottomEnd)
-                                    .padding(end = side * 0.06f, bottom = side * 0.06f)
-                            ) {
-                                Icon(
-                                    imageVector = AppIcons.PlaylistAdd,
-                                    contentDescription = "Tambah ke playlist",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
+                                            )) togetherWith
+                                            (fadeOut(tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)) +
+                                                    scaleOut(
+                                                        targetScale = 0.94f,
+                                                        animationSpec = tween(SONG_CHANGE_COVER_MS, easing = FastOutSlowInEasing)
+                                                    )) using
+                                            SizeTransform(clip = false)
+                                }
+                            },
+                            label = "nowPlayingCover",
+                            modifier = Modifier.fillMaxSize()
+                        ) { s ->
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                AsyncImage(
+                                    model = s.thumbnailUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .clip(CircleShape)
+                                        .background(Sonora.SurfaceHigh)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
                                 )
+                                // Tambah ke playlist: tombol kecil di tepi cover, ikut beranimasi bersama cover
+                                RoundButton(
+                                    onClick = { showAddDialog = true },
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .padding(end = side * 0.06f, bottom = side * 0.06f)
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.PlaylistAdd,
+                                        contentDescription = "Tambah ke playlist",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1326,4 +1394,32 @@ private fun PlainIconButton(
 private fun formatTime(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     return "%d:%02d".format(totalSeconds / 60, totalSeconds % 60)
+}
+
+/**
+ * Cover lagu tetangga yang ikut terlihat saat cover di Now Playing digeser. Selalu dikomposisi
+ * (transparan saat tidak digeser) supaya gambarnya sudah termuat begitu jari mulai menggeser.
+ */
+@Composable
+private fun SwipeCoverPeek(
+    thumbnailUrl: String?,
+    visible: Boolean,
+    offsetPx: Float,
+    shown: () -> Boolean
+) {
+    if (!visible) return
+    AsyncImage(
+        model = thumbnailUrl,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                translationX = offsetPx
+                alpha = if (shown()) 1f else 0f
+            }
+            .clip(CircleShape)
+            .background(Sonora.SurfaceHigh)
+            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+    )
 }

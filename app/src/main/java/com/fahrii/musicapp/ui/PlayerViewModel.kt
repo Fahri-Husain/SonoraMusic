@@ -32,6 +32,9 @@ data class PlayerUiState(
     val shuffleEnabled: Boolean = false,
     val repeatMode: Int = Player.REPEAT_MODE_OFF,
     val hasNext: Boolean = false,
+    /** Lagu yang akan diputar kalau next/previous ditekan; null kalau tidak ada. Dipakai untuk pratinjau saat cover digeser. */
+    val nextSong: Song? = null,
+    val previousSong: Song? = null,
     val error: String? = null,
     /** Dari mana lagu diputar, mis. Playlist "my gweh". */
     val sourceLabel: String? = null
@@ -236,6 +239,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         c.play()
     }
 
+    /** Langsung ke lagu sebelumnya di antrian (tidak mengulang lagu ini dari awal seperti [previous]). */
+    fun skipToPrevious() {
+        val c = controller ?: return
+        c.seekToPreviousMediaItem()
+        if (c.playbackState == Player.STATE_IDLE) c.prepare()
+        c.play()
+    }
+
     fun toggleShuffle() {
         val c = controller ?: return
         c.shuffleModeEnabled = !c.shuffleModeEnabled
@@ -291,6 +302,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun syncState(player: Player) {
+        val currentIdx = player.currentMediaItemIndex
+        val nextIdx = player.nextMediaItemIndex
+        val prevIdx = player.previousMediaItemIndex
+        val nextSong = if (nextIdx != C.INDEX_UNSET && nextIdx != currentIdx) {
+            player.getMediaItemAt(nextIdx).toSong()
+        } else null
+        val previousSong = if (prevIdx != C.INDEX_UNSET && prevIdx != currentIdx) {
+            player.getMediaItemAt(prevIdx).toSong()
+        } else null
         _state.update {
             it.copy(
                 currentSong = player.currentMediaItem?.toSong(),
@@ -299,6 +319,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 shuffleEnabled = player.shuffleModeEnabled,
                 repeatMode = player.repeatMode,
                 hasNext = player.hasNextMediaItem(),
+                nextSong = nextSong,
+                previousSong = previousSong,
                 error = player.playerError?.let { e -> "Gagal memutar: ${e.errorCodeName}" }
             )
         }
