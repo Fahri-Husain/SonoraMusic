@@ -1,12 +1,58 @@
-# Add project specific R8 rules here.
-# AGP will combine all keep rule files in src/main/keepRules to pass to R8
+# Aturan R8 khusus proyek ini.
+# AGP menggabungkan semua file keep rule di src/main/keepRules dan meneruskannya ke R8.
 #
-# For more details, see
-#   https://d.android.com/r/tools/r8/keep-rules
+# Detail: https://d.android.com/r/tools/r8/keep-rules
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# ---------------------------------------------------------------------------
+# Debug: pertahankan nama file dan nomor baris supaya stack trace crash di
+# build release masih bisa dibaca.
+# ---------------------------------------------------------------------------
+-keepattributes SourceFile,LineNumberTable,Signature,InnerClasses,EnclosingMethod,*Annotation*
+-renamesourcefileattribute SourceFile
+
+# ---------------------------------------------------------------------------
+# Kotlin stdlib & coroutines.
+# Crash di build release: "IllegalAccessError: Class kotlin.text.h extended by
+# class mc2 is inaccessible" (saat OkHttp memuat kotlin.text). R8 mengacak nama
+# kelas fasad Kotlin (StringsKt, CollectionsKt, FlowKt, ...) yang tersusun dari
+# kelas induk package-private, lalu hierarkinya jadi tidak bisa diakses.
+# Kelas-kelas ini dijaga utuh; selisih ukuran APK-nya kecil.
+# ---------------------------------------------------------------------------
+-keep class kotlin.** { *; }
+-keep class kotlinx.** { *; }
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+
+# ---------------------------------------------------------------------------
+# NewPipeExtractor (pencarian, stream audio, chart YouTube)
+# Memakai Mozilla Rhino untuk menjalankan JavaScript YouTube dan memuat
+# pola waktu ("timeago") lewat refleksi. Tanpa aturan ini, R8 membuang atau
+# mengganti nama kelas tersebut dan pencarian/pemutaran gagal di build release.
+# ---------------------------------------------------------------------------
+-keep class org.schabi.newpipe.extractor.timeago.patterns.** { *; }
+-keep class org.mozilla.javascript.** { *; }
+-keep class org.mozilla.classfile.ClassFileWriter*
+-dontwarn org.mozilla.javascript.tools.**
+-dontwarn org.mozilla.javascript.JavaToJSONConverters
+-dontwarn org.mozilla.javascript.xml.impl.xmlbeans.**
+-dontwarn javax.script.**
+-dontwarn jdk.dynalink.**
+-dontwarn java.beans.**
+
+# Kelas pesan protobuf yang dipakai extractor dibaca lewat refleksi
+-keepclassmembers class * extends com.google.protobuf.GeneratedMessageLite* {
+    <fields>;
+}
+
+# Library pendukung extractor: anotasi/kelas opsional yang tidak ada di Android
+-dontwarn org.jspecify.annotations.**
+-dontwarn com.google.re2j.**
+-dontwarn javax.annotation.**
+
+# ---------------------------------------------------------------------------
+# OkHttp: penyedia TLS opsional yang tidak dibundel di Android
+# ---------------------------------------------------------------------------
+-dontwarn okhttp3.internal.platform.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
