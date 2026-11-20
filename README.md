@@ -11,6 +11,12 @@
 
 <br>
 
+<a href="https://github.com/Fahri-Husain/SonoraMusic/releases/latest">
+  <img src="https://img.shields.io/badge/%E2%AC%87%EF%B8%8F%20Unduh%20APK-Rilis%20Terbaru-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Unduh APK" height="44">
+</a>
+
+<br>
+
 <img src="docs/screenshots/01-beranda.png" width="230" alt="Beranda">
 &nbsp;
 <img src="docs/screenshots/02-sedang-diputar.png" width="230" alt="Sedang Diputar">
@@ -235,6 +241,12 @@ app/src/main/java/com/fahrii/musicapp/
 
 ---
 
+## 📲 Unduh
+
+Ambil APK terbaru di halaman **[Releases](https://github.com/Fahri-Husain/SonoraMusic/releases/latest)**, lalu pasang di perangkat Android 8.0 (API 26) ke atas. Jika diminta, izinkan *Install dari sumber tidak dikenal* untuk browser atau file manager yang kamu pakai.
+
+---
+
 ## 🚀 Menjalankan Proyek
 
 **Prasyarat**
@@ -258,12 +270,12 @@ APK debug ada di `app/build/outputs/apk/debug/`.
 
 ## ⚠️ Catatan
 
-SonoraMusic dibuat untuk **tujuan belajar dan penggunaan pribadi**. Konten audio, sampul, dan lirik adalah milik pemegang hak ciptanya masing-masing. Harap gunakan sesuai ketentuan layanan sumber yang digunakan.
+SonoraMusic dibuat untuk **penggunaan pribadi**. Konten audio, sampul, dan lirik adalah milik pemegang hak ciptanya masing-masing. Harap gunakan sesuai ketentuan layanan sumber yang digunakan.
 
 ---
 
 <div align="center">
 
-Dibuat dengan ❤️ oleh [Fahri Husain](https://github.com/Fahri-Husain)
+Dibuat dengan oleh [Fahri Husain](https://github.com/Fahri-Husain)
 
 </div>
