@@ -242,7 +242,7 @@ private fun CollectionSongRow(
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = song.artist,
+                    text = artistLabel(song),
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,

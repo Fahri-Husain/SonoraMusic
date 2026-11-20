@@ -23,6 +23,9 @@ data class ArtistProfile(
     val subscribers: Long
 )
 
+/** Lagu yang benar-benar diputar untuk entri "sonora://search", beserta daftar artisnya satu per satu. */
+data class ResolvedSong(val song: Song, val artists: List<String>)
+
 /** Artis di hasil pencarian: nama + foto profil. */
 data class ArtistResult(
     val name: String,
@@ -376,8 +379,17 @@ object MusicRepository {
             fun sameArtist(it: PlaylistInfoItem) =
                 it.uploaderName?.contains(artist, ignoreCase = true) == true
 
+            // Judul dari Deezer kadang beda tanda baca/huruf besar dari YouTube Music
+            fun norm(s: String) = s.lowercase().replace(Regex("""[^\p{L}\p{N}]+"""), " ").trim()
+            fun fuzzyTitle(it: PlaylistInfoItem): Boolean {
+                val a = norm(it.name)
+                val b = norm(title)
+                return a.isNotEmpty() && b.isNotEmpty() && (a == b || a.contains(b) || b.contains(a))
+            }
+
             val best = items.firstOrNull { sameTitle(it) && sameArtist(it) }
                 ?: items.firstOrNull { sameTitle(it) }
+                ?: items.firstOrNull { fuzzyTitle(it) && sameArtist(it) }
                 ?: return@withContext null
 
             val result = loadAlbumPlaylist(
@@ -438,6 +450,27 @@ object MusicRepository {
             .replace("&apos;", "'")
             .replace("&amp;", "&")
             .replace('\u00a0', ' ')
+    }
+
+    /**
+     * Semua artis sebuah lagu dari baris "Judul · Artis 1 · Artis 2" di deskripsi otomatis YouTube
+     * Music. NewPipe hanya memberi artis pertama di hasil pencarian, jadi kolaborasi (mis. "Olivia
+     * Rodrigo" + "Chappell Roan") baru lengkap di sini. Null kalau formatnya tidak cocok.
+     */
+    /** Semua artis video YouTube [videoUrl] dari deskripsinya. Null kalau formatnya tidak cocok. */
+    suspend fun fetchArtistsByUrl(videoUrl: String): List<String>? = withContext(Dispatchers.IO) {
+        ensureInit()
+        parseArtistsFromDescription(StreamInfo.getInfo(ServiceList.YouTube, videoUrl).description?.content)
+    }
+
+    internal fun parseArtistsFromDescription(description: String?): List<String>? {
+        if (description.isNullOrBlank()) return null
+        val lines = htmlToPlainText(description).lines().map { it.trim() }
+        val provided = lines.indexOfFirst { it.startsWith("Provided to YouTube by", ignoreCase = true) }
+        if (provided < 0) return null
+        val titleLine = (provided + 1 until lines.size).firstOrNull { " · " in lines[it] } ?: return null
+        val artists = lines[titleLine].split(" · ").drop(1).map { it.trim() }.filter { it.isNotEmpty() }
+        return artists.ifEmpty { null }
     }
 
     internal fun parseAlbumFromDescription(description: String?): String? {
@@ -541,6 +574,56 @@ object MusicRepository {
         } else {
             null
         }
+    }
+
+    private val resolvedSongCache = ConcurrentHashMap<String, ResolvedSong>()
+
+    /**
+     * Lagu dari Beranda (Deezer) hanya membawa satu nama artis utama, padahal yang diputar adalah
+     * hasil pertama pencarian YouTube Music, yang bisa saja versi kolaborasi (mis. "Olivia Rodrigo &
+     * Chappell Roan"). Fungsi ini mengembalikan judul dan artis lengkap dari hasil yang sama dengan
+     * yang diputar [findVideoUrlBlocking], supaya lirik dan tampilan artis cocok dengan lagu yang
+     * terdengar. Null kalau lagu bukan "sonora://search" atau tidak ditemukan. Melempar exception
+     * kalau pencarian gagal.
+     */
+    suspend fun resolveSongMeta(songUrl: String): ResolvedSong? = withContext(Dispatchers.IO) {
+        val uri = android.net.Uri.parse(songUrl)
+        if (uri.scheme != "sonora") return@withContext null
+        val query = uri.getQueryParameter("q").orEmpty()
+        if (query.isBlank()) return@withContext null
+        resolvedSongCache[query]?.let { return@withContext it }
+
+        ensureInit()
+        val extractor = ServiceList.YouTube.getSearchExtractor(
+            query,
+            listOf(YoutubeSearchQueryHandlerFactory.MUSIC_SONGS),
+            ""
+        )
+        extractor.fetchPage()
+
+        val first = extractor.initialPage.items
+            .filterIsInstance<StreamInfoItem>()
+            .firstOrNull()
+            ?: return@withContext null
+
+        // Hasil pencarian hanya memuat artis pertama, jadi baca daftar lengkapnya dari deskripsi video.
+        val allArtists = runCatching {
+            parseArtistsFromDescription(StreamInfo.getInfo(ServiceList.YouTube, first.url).description?.content)
+        }.getOrNull()
+        val artists = allArtists
+            ?: listOf((first.uploaderName ?: "").removeSuffix(" - Topic").trim()).filter { it.isNotEmpty() }
+        if (artists.isEmpty()) return@withContext null
+
+        val song = Song(
+            url = first.url,
+            title = first.name,
+            artist = artists.joinToString(" & "),
+            thumbnailUrl = hdThumbnail(first.thumbnails.lastOrNull()?.url),
+            durationSeconds = first.duration
+        )
+        val resolved = ResolvedSong(song, artists)
+        resolvedSongCache[query] = resolved
+        resolved
     }
 
     /**

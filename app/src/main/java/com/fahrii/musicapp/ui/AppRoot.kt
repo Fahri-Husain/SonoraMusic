@@ -56,6 +56,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fahrii.musicapp.data.ArtistAlbum
+import com.fahrii.musicapp.data.isAlbumEntry
+import com.fahrii.musicapp.data.toAlbumRef
 import androidx.compose.foundation.layout.padding
 import android.net.Uri
 import android.widget.Toast
@@ -239,6 +241,7 @@ fun AppRoot(
                         HomeScreen(
                             viewModel = homeViewModel,
                             onPlay = { songs, index, source -> playerViewModel.playQueue(songs, index, source) },
+                            onOpenAlbum = ::openAlbum,
                             onGenreClick = ::openGenre,
                             onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                             listState = homeListState,
@@ -430,7 +433,20 @@ fun AppRoot(
                             currentSongUrl = playerState.currentSong?.url,
                             isPlaying = playerState.isPlaying,
                             onBack = { navController.popBackStack() },
-                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Rilis Baru") }
+                            onPlay = { songs, index ->
+                                val tapped = songs.getOrNull(index)
+                                if (tapped != null && tapped.isAlbumEntry()) {
+                                    // Album/EP: buka halaman albumnya, bukan diputar
+                                    openAlbum(tapped.toAlbumRef())
+                                } else {
+                                    // Putar semua/acak/klik lagu: album tidak ikut masuk antrean
+                                    val playable = songs.filterNot { it.isAlbumEntry() }
+                                    val start = tapped?.let { t -> playable.indexOfFirst { it.url == t.url } } ?: 0
+                                    if (playable.isNotEmpty()) {
+                                        playerViewModel.playQueue(playable, start.coerceAtLeast(0), "Rilis Baru")
+                                    }
+                                }
+                            }
                         )
                     }
 
@@ -680,6 +696,11 @@ fun AppRoot(
                     libraryViewModel = libraryViewModel,
                     onBack = { showPlayer = false },
                     onOpenMenu = { songMenu.show(it) },
+                    // Tutup pemutarnya dulu supaya halaman artis terlihat
+                    onOpenArtist = { name ->
+                        showPlayer = false
+                        navController.navigate("artist/${Uri.encode(name)}")
+                    },
                     onSwipeDismiss = {
                         playerClosedBySwipe = true
                         showPlayer = false

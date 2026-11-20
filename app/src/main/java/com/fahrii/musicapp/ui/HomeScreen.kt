@@ -79,8 +79,11 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.isAlbumEntry
+import com.fahrii.musicapp.data.toAlbumRef
 import kotlinx.coroutines.delay
 import java.util.Calendar
 import androidx.compose.foundation.lazy.LazyListState
@@ -120,6 +123,7 @@ private fun currentHour(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY
 fun HomeScreen(
     viewModel: HomeViewModel,
     onPlay: (List<Song>, Int, String) -> Unit,
+    onOpenAlbum: (ArtistAlbum) -> Unit,
     onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit,
     onArtistClick: (String) -> Unit,
     onPickClick: (Int) -> Unit,
@@ -185,7 +189,7 @@ fun HomeScreen(
                 item {
                     Column {
                         SectionTitle("Rilis Baru", onSeeAll = onSeeAllNewReleases)
-                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", onPlay)
+                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", onPlay, onOpenAlbum)
                     }
                 }
             }
@@ -193,7 +197,7 @@ fun HomeScreen(
             item {
                 Column {
                     SectionTitle("Lagu Trending", onSeeAll = onSeeAllTrending)
-                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", onPlay)
+                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", onPlay, onOpenAlbum)
                 }
             }
 
@@ -549,7 +553,12 @@ private class StepPanelShape(private val radius: Dp) : Shape {
 // ---------- Rilis Baru & Lagu Trending (komponen sama) ----------
 
 @Composable
-private fun SongCardRow(songs: List<Song>, source: String, onPlay: (List<Song>, Int, String) -> Unit) {
+private fun SongCardRow(
+    songs: List<Song>,
+    source: String,
+    onPlay: (List<Song>, Int, String) -> Unit,
+    onOpenAlbum: (ArtistAlbum) -> Unit
+) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -566,7 +575,19 @@ private fun SongCardRow(songs: List<Song>, source: String, onPlay: (List<Song>, 
             }
         } else {
             itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
-                SongCard(song = song, onClick = { onPlay(songs, index, source) })
+                SongCard(
+                    song = song,
+                    onClick = {
+                        if (song.isAlbumEntry()) {
+                            // Album/EP: buka halaman albumnya. Antrean hanya berisi lagu yang bisa diputar.
+                            onOpenAlbum(song.toAlbumRef())
+                        } else {
+                            val playable = songs.filterNot { it.isAlbumEntry() }
+                            val start = playable.indexOfFirst { it.url == song.url }
+                            if (start >= 0) onPlay(playable, start, source)
+                        }
+                    }
+                )
             }
         }
     }
@@ -589,7 +610,7 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = song.artist,
+            text = artistLabel(song),
             fontSize = 13.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -597,7 +618,7 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
             modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
         )
         Text(
-            text = song.title,
+            text = if (song.isAlbumEntry()) "Album • ${song.title}" else song.title,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             color = Sonora.TextSecondary,

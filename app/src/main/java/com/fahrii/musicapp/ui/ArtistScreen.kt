@@ -464,7 +464,7 @@ private fun PopularSongRow(
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = song.artist,
+                    text = artistLabel(song),
                     fontSize = 13.sp,
                     color = Sonora.TextSecondary,
                     maxLines = 1,

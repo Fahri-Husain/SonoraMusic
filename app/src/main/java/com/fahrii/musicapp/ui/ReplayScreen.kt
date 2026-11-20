@@ -1242,7 +1242,7 @@ private fun AlbumTrackRow(
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = if (plays > 0) "${song.artist} · $plays ${if (plays == 1) "Play" else "Plays"}" else song.artist,
+                    text = artistLabel(song).let { a -> if (plays > 0) "$a · $plays ${if (plays == 1) "Play" else "Plays"}" else a },
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

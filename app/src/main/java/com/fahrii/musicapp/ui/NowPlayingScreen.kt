@@ -41,6 +41,8 @@ import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.Orientation
@@ -107,7 +109,9 @@ import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.LyricLine
+import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.LyricsRepository
+import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.Song
 import kotlin.math.sin
 import kotlin.math.cos
@@ -127,6 +131,8 @@ fun NowPlayingScreen(
     onBack: () -> Unit,
     /** Dipanggil saat titik tiga diketuk, untuk membuka menu lagu (digambar di AppRoot). */
     onOpenMenu: (Song) -> Unit,
+    /** Dipanggil saat nama artis diketuk, untuk membuka halaman artis (navigasi ada di AppRoot). */
+    onOpenArtist: (String) -> Unit = {},
     modifier: Modifier = Modifier,
     /** Dipanggil setelah layar selesai meluncur keluar karena digeser turun (default: sama dengan [onBack]). */
     onSwipeDismiss: () -> Unit = onBack
@@ -156,17 +162,44 @@ fun NowPlayingScreen(
 
     // null = sedang memuat, kosong = tidak ditemukan
     var lyrics by remember(song.url) { mutableStateOf<List<LyricLine>?>(null) }
+    // Lagu dari Beranda (Deezer) hanya membawa satu artis utama. Metadata asli dari YouTube Music
+    // (lagu yang benar-benar diputar) berisi semua artisnya, mis. "Olivia Rodrigo & Chappell Roan".
+    val displayArtist = artistLabel(song)
+    // Ketuk nama artis: satu artis langsung dibuka, kolaborasi memberi pilihan artis dulu
+    var showArtistPicker by remember { mutableStateOf(false) }
+    val artistNames = ArtistNames.names(song)
     LaunchedEffect(song.url) {
         lyrics = null
+        val meta = runCatching { MusicRepository.resolveSongMeta(song.url) }.getOrNull()
+        val fullArtist = ArtistNames.resolve(song)
         // Tunggu durasi dari pemutar (maks. 4 dtk) supaya versi lirik yang waktunya cocok bisa dipilih
         val durationSec = withTimeoutOrNull(4_000) {
             snapshotFlow { progress.durationMs }.first { it > 0 }
         }?.div(1000) ?: -1L
-        lyrics = LyricsRepository.get(song.title, song.artist, durationSec)
+        lyrics = LyricsRepository.get(meta?.song?.title ?: song.title, fullArtist, durationSec)
     }
 
     LaunchedEffect(lyrics) { if (lyrics?.isEmpty() == true) showLyrics = false }
     BackHandler(enabled = showLyrics) { showLyrics = false }
+
+    if (showArtistPicker) {
+        AlertDialog(
+            onDismissRequest = { showArtistPicker = false },
+            title = { Text("Buka halaman artis") },
+            text = {
+                Column {
+                    artistNames.forEach { name ->
+                        TextButton(onClick = {
+                            showArtistPicker = false
+                            onOpenArtist(name)
+                        }) { Text(name) }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showArtistPicker = false }) { Text("Batal") } }
+        )
+    }
 
     val durationMs = progress.durationMs
     val sliderValue = if (isDragging) {
@@ -601,12 +634,16 @@ fun NowPlayingScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = s.artist,
+                        text = if (s.url == song.url) displayArtist else s.artist,
                         fontSize = 15.sp,
                         color = inactive,
                         maxLines = 1,
                         overflow = TextOverflow.Clip,
-                        modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
+                        modifier = Modifier
+                            .clickable {
+                                if (artistNames.size == 1) onOpenArtist(artistNames[0]) else showArtistPicker = true
+                            }
+                            .basicMarquee(iterations = Int.MAX_VALUE),
                         textAlign = TextAlign.Center
                     )
                 }
@@ -749,7 +786,7 @@ fun NowPlayingScreen(
         ) {
             FullLyricsScreen(
                 title = song.title,
-                artist = song.artist,
+                artist = displayArtist,
                 coverUrl = song.thumbnailUrl,
                 lines = lyrics.orEmpty(),
                 positionMs = progress.positionMs,

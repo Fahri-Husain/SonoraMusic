@@ -64,10 +64,16 @@ object LyricsRepository {
      * dinilai dan hanya yang cocok dan lengkap yang dipakai; yang terbaik menang.
      */
     private fun fetch(title: String, artist: String, durationSeconds: Long): List<LyricLine> {
-        val queries = listOf(
-            "https://lrclib.net/api/search?track_name=${Uri.encode(title)}&artist_name=${Uri.encode(artist)}",
-            "https://lrclib.net/api/search?q=${Uri.encode("$title $artist")}"
-        )
+        // Artis kolaborasi ("A & B") sering hanya dicatat atas nama artis utama di LRCLIB, jadi
+        // pencarian dengan nama lengkap bisa kosong. Dicoba juga dengan artis pertama saja;
+        // skor kecocokan artis dan durasi di bawah tetap menyaring hasil yang salah.
+        val primary = artist.split(" & ", ",").first().trim()
+        val artistNames = listOf(artist, primary).filter { it.isNotBlank() }.distinct()
+        val queries = artistNames.map {
+            "https://lrclib.net/api/search?track_name=${Uri.encode(title)}&artist_name=${Uri.encode(it)}"
+        } + artistNames.map {
+            "https://lrclib.net/api/search?q=${Uri.encode("$title $it")}"
+        }
         for (url in queries) {
             val results = getArray(url)
             var best: List<LyricLine> = emptyList()

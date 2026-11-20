@@ -36,10 +36,11 @@ fun MiniPlayer(
 ) {
     val song = state.currentSong ?: return
 
+    val artist = artistLabel(song)
     val subtitle = when {
         state.error != null -> state.error
         state.isBuffering -> "Memuat…"
-        else -> song.artist
+        else -> artist
     }
     val subtitleColor = if (state.error != null) {
         MaterialTheme.colorScheme.error

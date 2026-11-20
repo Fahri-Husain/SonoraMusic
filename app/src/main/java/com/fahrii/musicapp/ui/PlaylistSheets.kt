@@ -199,7 +199,7 @@ fun SongOptionsSheet(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = song.artist,
+                            text = artistLabel(song),
                             fontSize = 13.sp,
                             color = Color.White.copy(alpha = 0.7f),
                             maxLines = 1,

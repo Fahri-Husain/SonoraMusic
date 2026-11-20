@@ -625,7 +625,7 @@ private fun SongRow(song: Song, isCurrent: Boolean, isPlaying: Boolean, onClick:
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = song.artist,
+                    text = artistLabel(song),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

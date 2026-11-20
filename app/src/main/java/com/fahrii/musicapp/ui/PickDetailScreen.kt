@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.isAlbumEntry
 
 /**
  * Detail satu "Pilihan Cepat": cover mosaik, tombol Putar/Acak, lalu daftar lagunya.
@@ -282,7 +283,7 @@ internal fun TrackRow(
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = song.title,
+                text = if (song.isAlbumEntry()) "Album • ${song.title}" else song.title,
                 fontSize = 15.sp,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
                 maxLines = 1,
@@ -291,7 +292,7 @@ internal fun TrackRow(
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = song.artist,
+                    text = artistLabel(song),
                     fontSize = 13.sp,
                     color = Sonora.TextSecondary,
                     maxLines = 1,
@@ -304,8 +305,11 @@ internal fun TrackRow(
             Spacer(Modifier.width(12.dp))
             Text(formatDuration(song.durationSeconds), fontSize = 12.sp, color = Sonora.TextSecondary)
         }
-        IconButton(onClick = { songMenu.show(song) }) {
-            Icon(AppIcons.MoreVert, contentDescription = "Opsi")
+        // Album tidak punya menu lagu (tambah ke playlist, unduh, dsb.)
+        if (!song.isAlbumEntry()) {
+            IconButton(onClick = { songMenu.show(song) }) {
+                Icon(AppIcons.MoreVert, contentDescription = "Opsi")
+            }
         }
     }
 }

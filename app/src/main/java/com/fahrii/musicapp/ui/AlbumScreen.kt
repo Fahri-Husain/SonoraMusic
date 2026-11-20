@@ -196,7 +196,7 @@ private fun AlbumTrackRow(
             )
             ArtistLine(song.url) { mod ->
                 Text(
-                    text = song.artist,
+                    text = artistLabel(song),
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

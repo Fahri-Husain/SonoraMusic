@@ -130,6 +130,10 @@ object ChartRepository {
         )
     }
 
+    /** URL entri album: dibuka sebagai halaman album, bukan diputar. */
+    private fun albumEntryUrl(title: String, artist: String): String =
+        "$ALBUM_ENTRY_PREFIX?title=" + Uri.encode(title) + "&artist=" + Uri.encode(artist)
+
     private fun JSONObject.toAlbumSong(): Song? {
         val title = optString("title")
         if (title.isBlank()) return null
@@ -137,8 +141,12 @@ object ChartRepository {
         val cover = optString("cover_xl")
             .ifBlank { optString("cover_big") }
             .ifBlank { optString("cover_medium") }
+        // Single berisi satu lagu, jadi langsung diputar. Album dan EP berisi banyak lagu: buka
+        // halaman albumnya. Kalau jenisnya tidak diketahui, diperlakukan seperti single (perilaku lama).
+        val type = optString("record_type").lowercase()
+        val isAlbum = type.isNotBlank() && type != "single"
         return Song(
-            url = searchUrl(title, artist),
+            url = if (isAlbum) albumEntryUrl(title, artist) else searchUrl(title, artist),
             title = title,
             artist = artist.ifBlank { "Unknown artist" },
             thumbnailUrl = cover.ifBlank { null },

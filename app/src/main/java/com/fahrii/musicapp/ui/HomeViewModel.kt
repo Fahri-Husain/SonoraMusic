@@ -8,6 +8,7 @@ import com.fahrii.musicapp.data.ChartRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.QuickPickRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.isAlbumEntry
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,7 +105,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun loadNewReleaseDurations() {
         if (durationsJob?.isActive == true) return
-        val pending = _state.value.newReleases.filter { it.durationSeconds <= 0 }
+        val pending = _state.value.newReleases.filter { it.durationSeconds <= 0 && !it.isAlbumEntry() }
         if (pending.isEmpty()) return
 
         durationsJob = viewModelScope.launch {
