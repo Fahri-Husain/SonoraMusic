@@ -26,12 +26,12 @@
 | | Fitur | Ringkasan |
 |---|---|---|
 | 🏠 | [Beranda dinamis](#-beranda-dinamis) | Pilihan Cepat, Rilis Baru, dan Lagu Trending |
-| 🎧 | [Pemutar penuh](#-halaman-sedang-diputar) | Cover berbentuk lingkaran, warna latar mengikuti sampul |
+| 🎧 | [Pemutar penuh](#-halaman-sedang-diputar) | Geser cover untuk ganti lagu, ketuk artis untuk buka profilnya, warna latar mengikuti sampul |
 | 📝 | [Lirik tersinkron](#-lirik-tersinkron) | Lirik berjalan mengikuti lagu secara real-time |
 | 🖼️ | [Kartu lirik](#️-bagikan-kartu-lirik) | Bagikan potongan lirik sebagai gambar yang cantik |
 | 📚 | [Koleksi](#-koleksi) | Favorit, Replay, Paling Sering Diputar, Diunduh, dan Riwayat |
 | 📊 | [Replay bulanan](#-replay-statistik-dengarmu) | Rekap menit mendengar, artis, dan lagu teratas |
-| 🎼 | [Playlist & Import](#-playlist-dan-import) | Buat playlist sendiri atau impor dari Spotify / YouTube |
+| 🎼 | [Playlist & Import](#-playlist-dan-import) | Buat playlist sendiri atau impor dari link Spotify / YouTube |
 | 🎤 | [Halaman artis](#-halaman-artis) | Profil artis, deskripsi, dan lagu populer |
 | 🔍 | [Pencarian](#-pencarian) | Cari lagu atau artis lalu putar langsung |
 | ⚙️ | [Pengaturan lengkap](#️-pengaturan-lengkap) | Crossfade, kualitas audio, timer tidur, unduhan, dll. |
@@ -63,6 +63,9 @@ Pemutar layar penuh yang dirancang agar enak dipandang:
 
 - **Cover melingkar** dengan **warna latar otomatis** diambil dari warna dominan sampul album.
 - Kontrol lengkap: **putar/jeda, sebelumnya, berikutnya, acak (shuffle), dan ulangi (repeat)**.
+- **Geser cover** untuk pindah lagu: geser ke **kiri ➜ lagu berikutnya**, geser ke **kanan ➜ lagu sebelumnya**. Cover lagu tujuan ikut terlihat saat digeser.
+- **Ketuk nama artis** untuk membuka **halaman artis**. Jika lagu punya beberapa artis (mis. *Olivia Rodrigo & Chappell Roan*), muncul pilihan artis yang ingin dibuka.
+- **Tarik layar ke bawah** untuk menutup pemutar dan kembali ke halaman sebelumnya.
 - **Seekbar** dengan penanda durasi berjalan dan sisa waktu.
 - Tombol **favorit ❤️**, **tambah ke antrean**, dan **menu titik tiga** (tambahkan ke playlist, putar selanjutnya, unduh, bagikan).
 - Pratinjau **baris lirik aktif** langsung di bawah judul lagu.
@@ -138,17 +141,19 @@ Rekap musik pribadi, mirip *Wrapped* tetapi **tersedia setiap bulan**:
 
 ## 🎼 Playlist dan Import
 
-<img src="docs/screenshots/08-playlist.png" align="right" width="260" alt="Playlist">
-
 - **Buat playlist** sendiri, lalu tambahkan lagu dari menu titik tiga mana pun.
 - **Edit judul** dan **ganti cover** playlist dengan gambar dari galeri, atau hapus playlist kapan saja.
-- **Import playlist dari link**:
+- **Import playlist dari link**: ketuk menu **⋮** di pojok kanan atas tab *Your Playlist*, lalu pilih **Import playlist dari link** dan tempel link-nya.
   - **YouTube / YouTube Music** – hingga 500 lagu.
   - **Spotify** – playlist publik dicocokkan otomatis ke lagu yang bisa diputar.
   - Ada catatan hasil impor, misalnya jika sebagian lagu tidak ditemukan.
 - Playlist ditampilkan sebagai grid cover yang rapi.
 
-<br clear="right">
+<div align="center">
+<img src="docs/screenshots/08-playlist.png" width="240" alt="Daftar playlist">
+&nbsp;&nbsp;
+<img src="docs/screenshots/11-import-playlist.png" width="240" alt="Import playlist dari link">
+</div>
 
 ---
 
