@@ -50,6 +50,9 @@ object MusicRepository {
 
     private const val URL_TTL_MS = 20 * 60 * 1000L
 
+    /** Bitrate (kbps) yang dituju untuk kualitas "Sedang". */
+    private const val NORMAL_TARGET_KBPS = 128
+
     private data class CachedUrl(val url: String, val expiresAtMs: Long)
 
     private val urlCache = ConcurrentHashMap<String, CachedUrl>()
@@ -453,9 +456,11 @@ object MusicRepository {
      * Versi blocking, dipanggil dari background thread milik ExoPlayer (PlaybackService).
      * Hasilnya di-cache 20 menit supaya seek/retry nggak ambil ulang dari YouTube.
      */
-    fun resolveAudioUrlBlocking(videoUrl: String): String {
+    fun resolveAudioUrlBlocking(videoUrl: String, quality: AudioQuality = AudioQuality.HIGH): String {
         val now = System.currentTimeMillis()
-        urlCache[videoUrl]?.let { if (it.expiresAtMs > now) return it.url }
+        // Kunci cache menyertakan kualitas, supaya ganti kualitas tidak memakai URL lama
+        val cacheKey = "$videoUrl|${quality.name}"
+        urlCache[cacheKey]?.let { if (it.expiresAtMs > now) return it.url }
 
         ensureInit()
 
@@ -463,15 +468,29 @@ object MusicRepository {
         val candidates = info.audioStreams
             .filter { it.isUrl && it.deliveryMethod == DeliveryMethod.PROGRESSIVE_HTTP }
 
-        val audio = candidates
-            .filter { it.format == MediaFormat.M4A }
-            .maxByOrNull { it.averageBitrate }
-            ?: candidates.maxByOrNull { it.averageBitrate }
+        // Utamakan M4A (paling kompatibel); kalau tidak ada, pakai format apa pun
+        val pool = candidates.filter { it.format == MediaFormat.M4A }.ifEmpty { candidates }
+        val audio = pickByQuality(pool, quality)
             ?: throw IllegalStateException("Stream audio tidak ditemukan")
 
         val url = audio.content
-        urlCache[videoUrl] = CachedUrl(url, now + URL_TTL_MS)
+        urlCache[cacheKey] = CachedUrl(url, now + URL_TTL_MS)
         return url
+    }
+
+    /** Pilih stream sesuai [quality]; bitrate yang tidak diketahui (<= 0) dianggap paling rendah. */
+    private fun <T : org.schabi.newpipe.extractor.stream.AudioStream> pickByQuality(
+        streams: List<T>,
+        quality: AudioQuality
+    ): T? {
+        if (streams.isEmpty()) return null
+        val known = streams.filter { it.averageBitrate > 0 }
+        if (known.isEmpty()) return streams.first()
+        return when (quality) {
+            AudioQuality.HIGH -> known.maxByOrNull { it.averageBitrate }
+            AudioQuality.LOW -> known.minByOrNull { it.averageBitrate }
+            AudioQuality.NORMAL -> known.minByOrNull { kotlin.math.abs(it.averageBitrate - NORMAL_TARGET_KBPS) }
+        }
     }
 
     /**
@@ -479,14 +498,14 @@ object MusicRepository {
      * di PlaybackService: "sonora://search?q=..." dicari dulu di YouTube Music, link YouTube
      * langsung diambil streamnya. Dipakai pengunduh; blocking, panggil dari thread background.
      */
-    fun resolvePlayableUrlBlocking(songUrl: String): String {
+    fun resolvePlayableUrlBlocking(songUrl: String, quality: AudioQuality = AudioQuality.HIGH): String {
         val uri = android.net.Uri.parse(songUrl)
         return when {
             uri.scheme == "sonora" -> {
                 val query = uri.getQueryParameter("q").orEmpty()
-                resolveAudioUrlBlocking(findVideoUrlBlocking(query))
+                resolveAudioUrlBlocking(findVideoUrlBlocking(query), quality)
             }
-            else -> resolveAudioUrlBlocking(songUrl)
+            else -> resolveAudioUrlBlocking(songUrl, quality)
         }
     }
 

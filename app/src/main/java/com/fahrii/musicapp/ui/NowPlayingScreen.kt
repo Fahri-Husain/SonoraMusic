@@ -108,6 +108,10 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import com.fahrii.musicapp.data.LyricLine
 import com.fahrii.musicapp.data.LyricsRepository
+import com.fahrii.musicapp.data.Song
+import kotlin.math.sin
+import kotlin.math.cos
+import kotlin.math.asin
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -121,6 +125,8 @@ fun NowPlayingScreen(
     viewModel: PlayerViewModel,
     libraryViewModel: LibraryViewModel,
     onBack: () -> Unit,
+    /** Dipanggil saat titik tiga diketuk, untuk membuka menu lagu (digambar di AppRoot). */
+    onOpenMenu: (Song) -> Unit,
     modifier: Modifier = Modifier,
     /** Dipanggil setelah layar selesai meluncur keluar karena digeser turun (default: sama dengan [onBack]). */
     onSwipeDismiss: () -> Unit = onBack
@@ -519,12 +525,39 @@ fun NowPlayingScreen(
                                         .background(Sonora.SurfaceHigh)
                                         .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
                                 )
-                                // Tambah ke playlist: tombol kecil di tepi cover, ikut beranimasi bersama cover
+                                // Tombol kecil tepat di garis tepi cover (pusat tombol di keliling lingkaran),
+                                // ikut beranimasi bersama cover. Tambah ke playlist di sudut 45° kanan bawah,
+                                // titik tiga (menu lagu) di atasnya, berjarak satu tombol + celah sepanjang busur.
+                                val radius = side.value / 2f
+                                val halfButton = 22f // setengah ukuran RoundButton (44 dp)
+                                val playlistAngle = (Math.PI / 4).toFloat()
+                                val gapAngle = 2f * asin(((44f + 8f) / 2f / radius).coerceAtMost(1f))
+                                val moreAngle = playlistAngle - gapAngle
+
+                                RoundButton(
+                                    onClick = { onOpenMenu(s) },
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            x = (radius + radius * cos(moreAngle) - halfButton).dp,
+                                            y = (radius + radius * sin(moreAngle) - halfButton).dp
+                                        )
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.MoreVert,
+                                        contentDescription = "Opsi",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                                 RoundButton(
                                     onClick = { showAddDialog = true },
                                     modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .padding(end = side * 0.06f, bottom = side * 0.06f)
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            x = (radius + radius * cos(playlistAngle) - halfButton).dp,
+                                            y = (radius + radius * sin(playlistAngle) - halfButton).dp
+                                        )
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.PlaylistAdd,

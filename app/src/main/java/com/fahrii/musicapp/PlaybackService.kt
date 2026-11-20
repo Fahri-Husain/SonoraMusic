@@ -15,6 +15,11 @@ import androidx.media3.session.MediaSessionService
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.SettingsRepository
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import java.io.IOException
 import androidx.media3.datasource.DefaultHttpDataSource
 
@@ -23,11 +28,13 @@ class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
     private var crossfade: CrossfadeManager? = null
+    private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
 
         val downloads = DownloadRepository.getInstance(this)
+        val settings = SettingsRepository.getInstance(this)
 
         // Ubah link YouTube di antrian jadi URL stream audio, tepat saat lagu mau diputar
         val resolver = ResolvingDataSource.Resolver { dataSpec ->
@@ -44,14 +51,14 @@ class PlaybackService : MediaSessionService() {
                     uri.scheme == "sonora" -> {
                         val query = uri.getQueryParameter("q").orEmpty()
                         val videoUrl = MusicRepository.findVideoUrlBlocking(query)
-                        val streamUrl = MusicRepository.resolveAudioUrlBlocking(videoUrl)
+                        val streamUrl = MusicRepository.resolveAudioUrlBlocking(videoUrl, settings.streamQuality.value)
                         dataSpec.withUri(Uri.parse(streamUrl))
                     }
 
                     // Lagu dari hasil search YouTube
                     uri.host?.endsWith("youtube.com") == true &&
                             uri.getQueryParameter("v") != null -> {
-                        val streamUrl = MusicRepository.resolveAudioUrlBlocking(uri.toString())
+                        val streamUrl = MusicRepository.resolveAudioUrlBlocking(uri.toString(), settings.streamQuality.value)
                         dataSpec.withUri(Uri.parse(streamUrl))
                     }
 
@@ -85,6 +92,11 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player).build()
 
+        // Lewati bagian senyap mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar
+        settingsScope.launch {
+            settings.skipSilence.collect { player.skipSilenceEnabled = it }
+        }
+
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
         crossfade = CrossfadeManager(this, player, dataSourceFactory, SettingsRepository.getInstance(this))
     }
@@ -97,6 +109,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        settingsScope.cancel()
         crossfade?.release()
         crossfade = null
         mediaSession?.run {

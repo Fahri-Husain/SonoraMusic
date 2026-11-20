@@ -32,6 +32,13 @@ object LyricsRepository {
     private const val MIN_LINES = 5
 
     /**
+     * Selisih maksimum (detik) antara durasi lagu yang diputar dan durasi lirik di LRCLIB. Lebih dari ini
+     * dianggap versi lain (remix, versi album vs single, dsb.) dan liriknya ditolak, karena waktunya pasti
+     * tidak selaras. Lebih baik tanpa lirik daripada lirik yang salah waktu.
+     */
+    private const val MAX_DURATION_DIFF_SEC = 8
+
+    /**
      * [durationSeconds] = durasi lagu yang sedang diputar (kalau belum diketahui, isi -1).
      * Dipakai untuk memilih versi lirik yang waktunya cocok dengan lagu.
      */
@@ -39,7 +46,9 @@ object LyricsRepository {
         withContext(Dispatchers.IO) {
             val cleanTitle = cleanTitle(title)
             val cleanArtist = cleanArtist(artist)
-            val key = "$cleanArtist|$cleanTitle".lowercase()
+            // Durasi ikut di kunci: lagu yang sama bisa punya beberapa versi (mis. album dan remix)
+            // dengan lirik berbeda, jadi hasil satu versi tidak boleh dipakai untuk versi lainnya.
+            val key = "$cleanArtist|$cleanTitle|$durationSeconds".lowercase()
 
             cache[key]?.let { return@withContext it }
 
@@ -91,16 +100,17 @@ object LyricsRepository {
         }
         if (artistMatches(item.optString("artistName"), artist)) score += 20
 
-        // Durasi dipakai sebagai nilai, bukan penolak, supaya durasi pemutar yang meleset
-        // tidak membuat semua lirik tertolak.
+        // Durasi lirik harus dekat dengan durasi lagu yang diputar. Kalau jauh, itu versi lain
+        // (mis. remix dengan intro tambahan) dan waktunya tidak akan selaras, jadi ditolak.
+        // Kalau durasi pemutar belum diketahui (<= 0), tidak ada yang ditolak karena durasi.
         val itemDuration = item.optDouble("duration", -1.0)
         if (durationSeconds > 0 && itemDuration > 0) {
             val diff = abs(itemDuration - durationSeconds)
+            if (diff > MAX_DURATION_DIFF_SEC) return null
             score += when {
                 diff <= 2 -> 50
                 diff <= 5 -> 30
-                diff <= 10 -> 10
-                else -> -40
+                else -> 10
             }
         }
         return score

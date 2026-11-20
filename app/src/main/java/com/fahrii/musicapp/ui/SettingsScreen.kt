@@ -20,8 +20,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,11 +35,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fahrii.musicapp.data.AudioQuality
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlin.math.roundToInt
 
@@ -60,6 +64,12 @@ private enum class ClearTarget(
     )
 }
 
+/** Pengaturan kualitas audio mana yang sedang dipilih lewat dialog. */
+private enum class QualityTarget(val dialogTitle: String) {
+    STREAM("Kualitas streaming"),
+    DOWNLOAD("Kualitas unduhan")
+}
+
 /**
  * Halaman Pengaturan, dibuka dari roda gigi di header Beranda.
  * Isinya dikelompokkan per bagian lewat [SettingsSection] dan [SettingsItem], jadi menambah
@@ -72,12 +82,19 @@ fun SettingsScreen(
     crossfadeSeconds: Int,
     onCrossfadeEnabledChange: (Boolean) -> Unit,
     onCrossfadeSecondsChange: (Int) -> Unit,
+    streamQuality: AudioQuality,
+    downloadQuality: AudioQuality,
+    skipSilence: Boolean,
+    onStreamQualityChange: (AudioQuality) -> Unit,
+    onDownloadQualityChange: (AudioQuality) -> Unit,
+    onSkipSilenceChange: (Boolean) -> Unit,
     onClearSearchHistory: () -> Unit,
     onClearPlayHistory: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var confirm by remember { mutableStateOf<ClearTarget?>(null) }
+    var qualityDialog by remember { mutableStateOf<QualityTarget?>(null) }
 
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
@@ -105,18 +122,51 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
+            SettingsSection(title = "Kualitas Audio") {
+                SettingsItem(
+                    icon = AppIcons.Radio,
+                    title = "Kualitas streaming",
+                    subtitle = "${streamQuality.label} · ${streamQuality.description}",
+                    onClick = { qualityDialog = QualityTarget.STREAM }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Download,
+                    title = "Kualitas unduhan",
+                    subtitle = "${downloadQuality.label} · ${downloadQuality.description}",
+                    onClick = { qualityDialog = QualityTarget.DOWNLOAD }
+                )
+            }
+
             SettingsSection(title = "Pemutaran") {
                 SettingsItem(
                     icon = AppIcons.Sync,
                     title = "Crossfade",
                     subtitle = "Lagu saling memudar saat berganti",
                     trailing = {
-                        Switch(checked = crossfadeEnabled, onCheckedChange = onCrossfadeEnabledChange)
+                        Switch(
+                            checked = crossfadeEnabled,
+                            onCheckedChange = onCrossfadeEnabledChange,
+                            colors = sonoraSwitchColors()
+                        )
                     }
                 )
                 if (crossfadeEnabled) {
                     CrossfadeDuration(seconds = crossfadeSeconds, onChange = onCrossfadeSecondsChange)
                 }
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.SkipNext,
+                    title = "Lewati bagian senyap",
+                    subtitle = "Langsung loncat saat ada jeda hening di dalam lagu",
+                    trailing = {
+                        Switch(
+                            checked = skipSilence,
+                            onCheckedChange = onSkipSilenceChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
                 SettingsDivider()
                 // Belum ada fungsinya: baris ini hanya menandai tempatnya di Pengaturan
                 SettingsItem(
@@ -124,7 +174,14 @@ fun SettingsScreen(
                     title = "AutoMix",
                     subtitle = "Segera hadir: transisi ala DJ yang menyesuaikan tempo lagu",
                     modifier = Modifier.alpha(0.5f),
-                    trailing = { Switch(checked = false, onCheckedChange = null, enabled = false) }
+                    trailing = {
+                        Switch(
+                            checked = false,
+                            onCheckedChange = null,
+                            enabled = false,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
                 )
             }
 
@@ -157,6 +214,55 @@ fun SettingsScreen(
         }
     }
 
+    qualityDialog?.let { target ->
+        val current = if (target == QualityTarget.STREAM) streamQuality else downloadQuality
+        AlertDialog(
+            onDismissRequest = { qualityDialog = null },
+            title = { Text(target.dialogTitle) },
+            text = {
+                Column {
+                    AudioQuality.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    if (target == QualityTarget.STREAM) onStreamQualityChange(option)
+                                    else onDownloadQualityChange(option)
+                                    qualityDialog = null
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = option == current, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Column {
+                                Text(text = option.label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                                Text(
+                                    text = option.description,
+                                    fontSize = 13.sp,
+                                    color = Sonora.TextSecondary
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        text = if (target == QualityTarget.STREAM)
+                            "Berlaku mulai lagu berikutnya yang diputar."
+                        else
+                            "Hanya berlaku untuk unduhan baru; lagu yang sudah diunduh tidak berubah.",
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = Sonora.TextSecondary,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { qualityDialog = null }) { Text("Tutup") } }
+        )
+    }
+
     confirm?.let { target ->
         AlertDialog(
             onDismissRequest = { confirm = null },
@@ -176,6 +282,23 @@ fun SettingsScreen(
         )
     }
 }
+
+/**
+ * Warna Switch: saat nonaktif, bulatan (thumb) putih supaya jelas terlihat di dalam pill;
+ * saat aktif, pill putih dengan bulatan hitam (sesuai tema).
+ */
+@Composable
+private fun sonoraSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = Color.Black,
+    checkedTrackColor = Color.White,
+    checkedBorderColor = Color.White,
+    uncheckedThumbColor = Color.White,
+    uncheckedTrackColor = Sonora.Border,
+    uncheckedBorderColor = Sonora.Border,
+    disabledUncheckedThumbColor = Color.White,
+    disabledUncheckedTrackColor = Sonora.Border,
+    disabledUncheckedBorderColor = Sonora.Border
+)
 
 /** Judul bagian + kartu yang membungkus item-itemnya. */
 @Composable

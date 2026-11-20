@@ -152,7 +152,10 @@ class DownloadRepository private constructor(context: Context) {
         val part = File(dir, "$name.audio.part")
 
         try {
-            val streamUrl = MusicRepository.resolvePlayableUrlBlocking(song.url)
+            val streamUrl = MusicRepository.resolvePlayableUrlBlocking(
+                song.url,
+                SettingsRepository.getInstance(appContext).downloadQuality.value
+            )
             fetchToFile(streamUrl, part)
             if (part.length() <= 0L) throw IOException("File kosong")
             if (audio.exists()) audio.delete()

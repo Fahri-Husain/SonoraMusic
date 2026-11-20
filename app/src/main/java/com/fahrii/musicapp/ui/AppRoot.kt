@@ -470,6 +470,9 @@ fun AppRoot(
                         val settingsViewModel: SettingsViewModel = viewModel()
                         val crossfadeEnabled by settingsViewModel.crossfadeEnabled.collectAsState()
                         val crossfadeSeconds by settingsViewModel.crossfadeSeconds.collectAsState()
+                        val streamQuality by settingsViewModel.streamQuality.collectAsState()
+                        val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
+                        val skipSilence by settingsViewModel.skipSilence.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             SettingsScreen(
                                 onBack = { navController.popBackStack() },
@@ -477,6 +480,12 @@ fun AppRoot(
                                 crossfadeSeconds = crossfadeSeconds,
                                 onCrossfadeEnabledChange = settingsViewModel::setCrossfadeEnabled,
                                 onCrossfadeSecondsChange = settingsViewModel::setCrossfadeSeconds,
+                                streamQuality = streamQuality,
+                                downloadQuality = downloadQuality,
+                                skipSilence = skipSilence,
+                                onStreamQualityChange = settingsViewModel::setStreamQuality,
+                                onDownloadQualityChange = settingsViewModel::setDownloadQuality,
+                                onSkipSilenceChange = settingsViewModel::setSkipSilence,
                                 onClearSearchHistory = searchViewModel::clearHistory,
                                 onClearPlayHistory = libraryViewModel::clearPlayHistory
                             )
@@ -670,6 +679,7 @@ fun AppRoot(
                     viewModel = playerViewModel,
                     libraryViewModel = libraryViewModel,
                     onBack = { showPlayer = false },
+                    onOpenMenu = { songMenu.show(it) },
                     onSwipeDismiss = {
                         playerClosedBySwipe = true
                         showPlayer = false
@@ -686,8 +696,15 @@ fun AppRoot(
                 controller = songMenu,
                 libraryViewModel = libraryViewModel,
                 playerViewModel = playerViewModel,
-                onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
-                onOpenAlbum = ::openAlbum
+                // Kalau menu dibuka dari layar pemutar, tutup pemutarnya dulu supaya halaman tujuan terlihat
+                onOpenArtist = { name ->
+                    showPlayer = false
+                    navController.navigate("artist/${Uri.encode(name)}")
+                },
+                onOpenAlbum = { album ->
+                    showPlayer = false
+                    openAlbum(album)
+                }
             )
         }
     }
