@@ -1,5 +1,11 @@
 package com.fahrii.musicapp.ui
 
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.text.format.Formatter
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -27,8 +33,10 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -41,8 +49,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import com.fahrii.musicapp.data.AudioQuality
 import com.fahrii.musicapp.data.SettingsRepository
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /** Data yang bisa dihapus dari halaman Pengaturan; menentukan teks dialog konfirmasinya. */
@@ -61,8 +74,28 @@ private enum class ClearTarget(
         dialogMessage = "Daftar lagu di Riwayat dan Paling Sering Diputar akan dihapus. " +
                 "Statistik Replay tidak ikut terhapus.",
         doneMessage = "Riwayat putar dihapus"
+    ),
+    DOWNLOADS(
+        dialogTitle = "Hapus semua unduhan?",
+        dialogMessage = "Semua lagu yang sudah diunduh akan dihapus dari perangkat. " +
+                "Lagu di Favorit dan playlist tetap ada dan bisa diputar lewat streaming.",
+        doneMessage = "Semua unduhan dihapus"
     )
 }
+
+private const val GITHUB_URL = "https://github.com/Fahri-Husain/SonoraMusic"
+private const val ISSUES_URL = "$GITHUB_URL/issues"
+
+/** Pustaka pihak ketiga yang dipakai, untuk dialog Lisensi open source: nama, lisensi. */
+private val OpenSourceLibraries = listOf(
+    "Jetpack Compose, Navigation, dan Media3 (ExoPlayer)" to "Apache License 2.0",
+    "OkHttp" to "Apache License 2.0",
+    "Coil" to "Apache License 2.0",
+    "Haze" to "Apache License 2.0",
+    "NewPipe Extractor" to "GNU GPL v3.0",
+    "Phosphor Icons (adamglin)" to "MIT License",
+    "Backdrop (Kyant0)" to "Lihat repositorinya"
+)
 
 /** Pengaturan kualitas audio mana yang sedang dipilih lewat dialog. */
 private enum class QualityTarget(val dialogTitle: String) {
@@ -88,6 +121,17 @@ fun SettingsScreen(
     onStreamQualityChange: (AudioQuality) -> Unit,
     onDownloadQualityChange: (AudioQuality) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
+    pauseOnUnplug: Boolean,
+    onPauseOnUnplugChange: (Boolean) -> Unit,
+    sleepTimerEndAt: Long,
+    onSleepTimerSet: (Int) -> Unit,
+    downloadWifiOnly: Boolean,
+    onDownloadWifiOnlyChange: (Boolean) -> Unit,
+    downloadedCount: Int,
+    downloadedBytes: Long,
+    cacheBytes: Long,
+    onClearCache: () -> Unit,
+    onClearDownloads: () -> Unit,
     onClearSearchHistory: () -> Unit,
     onClearPlayHistory: () -> Unit,
     modifier: Modifier = Modifier
@@ -95,6 +139,35 @@ fun SettingsScreen(
     val context = LocalContext.current
     var confirm by remember { mutableStateOf<ClearTarget?>(null) }
     var qualityDialog by remember { mutableStateOf<QualityTarget?>(null) }
+    var showSleepDialog by remember { mutableStateOf(false) }
+    var showLicenses by remember { mutableStateOf(false) }
+
+    // Sisa waktu timer tidur, diperbarui tiap 15 detik selama halaman terbuka
+    val nowMs by produceState(System.currentTimeMillis(), sleepTimerEndAt) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(15_000)
+        }
+    }
+    val sleepRemainingMin =
+        if (sleepTimerEndAt > 0L) ((sleepTimerEndAt - nowMs + 59_999L) / 60_000L).toInt() else 0
+
+    // Status izin notifikasi; dibaca ulang setiap kembali dari pengaturan sistem
+    var notificationsEnabled by remember {
+        mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled())
+    }
+    DisposableEffect(context) {
+        val owner = generateSequence(context) { (it as? ContextWrapper)?.baseContext }
+            .filterIsInstance<LifecycleOwner>()
+            .firstOrNull()
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+        }
+        owner?.lifecycle?.addObserver(observer)
+        onDispose { owner?.lifecycle?.removeObserver(observer) }
+    }
 
     val versionName = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
@@ -168,6 +241,29 @@ fun SettingsScreen(
                     }
                 )
                 SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Pause,
+                    title = "Jeda saat headset dicabut",
+                    subtitle = "Musik berhenti otomatis saat headset dicabut atau Bluetooth terputus",
+                    trailing = {
+                        Switch(
+                            checked = pauseOnUnplug,
+                            onCheckedChange = onPauseOnUnplugChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Refresh,
+                    title = "Timer tidur",
+                    subtitle = if (sleepRemainingMin > 0)
+                        "Musik berhenti sekitar $sleepRemainingMin menit lagi"
+                    else
+                        "Mati · hentikan musik otomatis setelah waktu tertentu",
+                    onClick = { showSleepDialog = true }
+                )
+                SettingsDivider()
                 // Belum ada fungsinya: baris ini hanya menandai tempatnya di Pengaturan
                 SettingsItem(
                     icon = AppIcons.Shuffle,
@@ -181,6 +277,48 @@ fun SettingsScreen(
                             enabled = false,
                             colors = sonoraSwitchColors()
                         )
+                    }
+                )
+            }
+
+            SettingsSection(title = "Unduhan dan Penyimpanan") {
+                SettingsItem(
+                    icon = AppIcons.Radio,
+                    title = "Unduh hanya lewat Wi-Fi",
+                    subtitle = "Cegah unduhan baru memakai data seluler",
+                    trailing = {
+                        Switch(
+                            checked = downloadWifiOnly,
+                            onCheckedChange = onDownloadWifiOnlyChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Library,
+                    title = "Lagu terunduh",
+                    subtitle = if (downloadedCount == 0) "Belum ada lagu yang diunduh"
+                    else "$downloadedCount lagu · ${Formatter.formatShortFileSize(context, downloadedBytes)}"
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.DeleteFilled,
+                    title = "Hapus semua unduhan",
+                    subtitle = "Kosongkan lagu yang tersimpan di perangkat",
+                    onClick = {
+                        if (downloadedCount > 0) confirm = ClearTarget.DOWNLOADS
+                        else Toast.makeText(context, "Belum ada lagu yang diunduh", Toast.LENGTH_SHORT).show()
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Trash,
+                    title = "Hapus cache",
+                    subtitle = "${Formatter.formatShortFileSize(context, cacheBytes)} · gambar sampul dan berkas sementara",
+                    onClick = {
+                        onClearCache()
+                        Toast.makeText(context, "Cache dibersihkan", Toast.LENGTH_SHORT).show()
                     }
                 )
             }
@@ -201,17 +339,135 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection(title = "Notifikasi") {
+                SettingsItem(
+                    icon = AppIcons.MusicNote,
+                    title = "Notifikasi pemutar",
+                    subtitle = if (notificationsEnabled)
+                        "Kontrol musik tampil di bilah notifikasi dan layar kunci. Ketuk untuk mengatur"
+                    else
+                        "Dimatikan, jadi kontrol musik tidak tampil. Ketuk untuk mengaktifkan",
+                    onClick = { openNotificationSettings(context) },
+                    trailing = {
+                        Text(
+                            text = if (notificationsEnabled) "Aktif" else "Mati",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Sonora.TextSecondary
+                        )
+                    }
+                )
+            }
+
             SettingsSection(title = "Tentang") {
                 SettingsItem(
                     icon = AppIcons.MusicNote,
                     title = "SonoraMusic",
                     subtitle = "Versi ${versionName ?: "-"}"
                 )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Share,
+                    title = "Kode sumber",
+                    subtitle = "github.com/Fahri-Husain/SonoraMusic",
+                    onClick = { openUrl(context, GITHUB_URL) }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Edit,
+                    title = "Laporkan masalah",
+                    subtitle = "Buka halaman Issues di GitHub",
+                    onClick = { openUrl(context, ISSUES_URL) }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Queue,
+                    title = "Lisensi open source",
+                    subtitle = "Pustaka pihak ketiga yang dipakai aplikasi ini",
+                    onClick = { showLicenses = true }
+                )
             }
 
             // Supaya item terakhir tidak tertutup mini player dan navbar yang mengambang
             Spacer(Modifier.height(LocalBottomInset.current + 24.dp))
         }
+    }
+
+    if (showSleepDialog) {
+        AlertDialog(
+            onDismissRequest = { showSleepDialog = false },
+            title = { Text("Timer tidur") },
+            text = {
+                Column {
+                    Text(
+                        text = "Musik berhenti otomatis setelah waktu yang dipilih.",
+                        fontSize = 13.sp,
+                        color = Sonora.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    listOf(15, 30, 45, 60, 90).forEach { minutes ->
+                        Text(
+                            text = "$minutes menit",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    onSleepTimerSet(minutes)
+                                    showSleepDialog = false
+                                    Toast.makeText(
+                                        context,
+                                        "Musik berhenti dalam $minutes menit",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                .padding(horizontal = 4.dp, vertical = 12.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                Row {
+                    if (sleepRemainingMin > 0) {
+                        TextButton(onClick = {
+                            onSleepTimerSet(0)
+                            showSleepDialog = false
+                            Toast.makeText(context, "Timer tidur dimatikan", Toast.LENGTH_SHORT).show()
+                        }) { Text("Matikan timer") }
+                    }
+                    TextButton(onClick = { showSleepDialog = false }) { Text("Tutup") }
+                }
+            }
+        )
+    }
+
+    if (showLicenses) {
+        AlertDialog(
+            onDismissRequest = { showLicenses = false },
+            title = { Text("Lisensi open source") },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        text = "SonoraMusic dibangun dengan pustaka sumber terbuka berikut. " +
+                                "Teks lisensi lengkap ada di repositori masing-masing.",
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = Sonora.TextSecondary,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    OpenSourceLibraries.forEach { (name, license) ->
+                        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                            Text(text = name, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                            Text(text = license, fontSize = 13.sp, color = Sonora.TextSecondary)
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showLicenses = false }) { Text("Tutup") } }
+        )
     }
 
     qualityDialog?.let { target ->
@@ -273,6 +529,7 @@ fun SettingsScreen(
                     when (target) {
                         ClearTarget.SEARCH -> onClearSearchHistory()
                         ClearTarget.PLAY -> onClearPlayHistory()
+                        ClearTarget.DOWNLOADS -> onClearDownloads()
                     }
                     Toast.makeText(context, target.doneMessage, Toast.LENGTH_SHORT).show()
                     confirm = null
@@ -280,6 +537,30 @@ fun SettingsScreen(
             },
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Batal") } }
         )
+    }
+}
+
+/** Buka halaman pengaturan notifikasi aplikasi ini di pengaturan sistem. */
+private fun openNotificationSettings(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }.onFailure {
+        Toast.makeText(context, "Tidak bisa membuka pengaturan notifikasi", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/** Buka tautan di browser. */
+private fun openUrl(context: Context, url: String) {
+    runCatching {
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }.onFailure {
+        Toast.makeText(context, "Tidak ada aplikasi untuk membuka tautan", Toast.LENGTH_SHORT).show()
     }
 }
 

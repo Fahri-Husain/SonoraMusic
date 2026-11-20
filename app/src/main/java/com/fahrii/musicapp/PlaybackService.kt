@@ -19,6 +19,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.IOException
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -95,6 +97,28 @@ class PlaybackService : MediaSessionService() {
         // Lewati bagian senyap mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar
         settingsScope.launch {
             settings.skipSilence.collect { player.skipSilenceEnabled = it }
+        }
+
+        // Jeda otomatis saat headset dicabut mengikuti Pengaturan
+        settingsScope.launch {
+            settings.pauseOnUnplug.collect { player.setHandleAudioBecomingNoisy(it) }
+        }
+
+        // Timer tidur: saat waktunya habis, pemutar dijeda. collectLatest membatalkan hitungan
+        // lama otomatis kalau timer diganti atau dimatikan.
+        settingsScope.launch {
+            settings.sleepTimerEndAt.collectLatest { endAt ->
+                if (endAt <= 0L) return@collectLatest
+                val wait = endAt - System.currentTimeMillis()
+                if (wait <= 0L) {
+                    // Sudah lewat sebelum layanan sempat berjalan: jangan menjeda lagu yang baru diputar
+                    settings.cancelSleepTimer()
+                    return@collectLatest
+                }
+                delay(wait)
+                player.pause()
+                settings.cancelSleepTimer()
+            }
         }
 
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama

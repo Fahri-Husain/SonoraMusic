@@ -2,13 +2,24 @@ package com.fahrii.musicapp.ui
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import coil.imageLoader
 import com.fahrii.musicapp.data.AudioQuality
+import com.fahrii.musicapp.data.DownloadRepository
+import com.fahrii.musicapp.data.DownloadedSong
 import com.fahrii.musicapp.data.SettingsRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import java.io.File
 
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     private val repo = SettingsRepository.getInstance(app)
+    private val downloads = DownloadRepository.getInstance(app)
+    private val context: Application = app
 
     val crossfadeEnabled: StateFlow<Boolean> = repo.crossfadeEnabled
     val crossfadeSeconds: StateFlow<Int> = repo.crossfadeSeconds
@@ -16,6 +27,20 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val streamQuality: StateFlow<AudioQuality> = repo.streamQuality
     val downloadQuality: StateFlow<AudioQuality> = repo.downloadQuality
     val skipSilence: StateFlow<Boolean> = repo.skipSilence
+    val pauseOnUnplug: StateFlow<Boolean> = repo.pauseOnUnplug
+    val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
+    val sleepTimerEndAt: StateFlow<Long> = repo.sleepTimerEndAt
+
+    /** Lagu yang sudah diunduh; jumlah dan ukurannya ditampilkan di bagian Unduhan dan Penyimpanan. */
+    val downloaded: StateFlow<List<DownloadedSong>> = downloads.downloaded
+
+    private val _cacheBytes = MutableStateFlow(0L)
+    /** Ukuran cache aplikasi (gambar sampul dan berkas sementara), tidak termasuk lagu yang diunduh. */
+    val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
+
+    init {
+        refreshCacheSize()
+    }
 
     fun setStreamQuality(quality: AudioQuality) = repo.setStreamQuality(quality)
 
@@ -23,7 +48,45 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSkipSilence(enabled: Boolean) = repo.setSkipSilence(enabled)
 
+    fun setPauseOnUnplug(enabled: Boolean) = repo.setPauseOnUnplug(enabled)
+
+    fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
+
     fun setCrossfadeEnabled(enabled: Boolean) = repo.setCrossfadeEnabled(enabled)
 
     fun setCrossfadeSeconds(seconds: Int) = repo.setCrossfadeSeconds(seconds)
+
+    /** [minutes] <= 0 mematikan timer tidur. */
+    fun setSleepTimer(minutes: Int) {
+        if (minutes <= 0) repo.cancelSleepTimer() else repo.startSleepTimer(minutes)
+    }
+
+    fun removeAllDownloads() = downloads.removeAll()
+
+    fun refreshCacheSize() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _cacheBytes.value = dirSize(context.cacheDir)
+        }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            // Cache gambar dibersihkan lewat Coil (bukan hapus folder) supaya indeksnya tetap konsisten
+            val loader = context.imageLoader
+            loader.memoryCache?.clear()
+            loader.diskCache?.clear()
+            context.cacheDir.listFiles()?.forEach { child ->
+                if (child.name != COIL_CACHE_DIR) child.deleteRecursively()
+            }
+            _cacheBytes.value = dirSize(context.cacheDir)
+        }
+    }
+
+    private fun dirSize(dir: File): Long =
+        runCatching { dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } }.getOrDefault(0L)
+
+    private companion object {
+        /** Folder cache bawaan Coil di dalam cacheDir. */
+        const val COIL_CACHE_DIR = "image_cache"
+    }
 }

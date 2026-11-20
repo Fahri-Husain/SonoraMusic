@@ -1,6 +1,8 @@
 package com.fahrii.musicapp.data
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -96,6 +98,7 @@ class DownloadRepository private constructor(context: Context) {
     /** Unduh satu lagu. Diabaikan kalau lagu itu sudah diunduh atau sedang berjalan. */
     fun download(song: Song) {
         if (statusOf(song.url) != DownloadStatus.None) return
+        if (blockedByWifiOnly()) return
         _downloading.update { it + song.url }
         _events.tryEmit("Mengunduh \"${song.title}\"")
 
@@ -119,6 +122,7 @@ class DownloadRepository private constructor(context: Context) {
             _events.tryEmit("Semua lagu sudah diunduh")
             return
         }
+        if (blockedByWifiOnly()) return
         _events.tryEmit("Mengunduh ${todo.size} lagu")
         todo.forEach { song ->
             _downloading.update { it + song.url }
@@ -133,6 +137,36 @@ class DownloadRepository private constructor(context: Context) {
                 }
             }
         }
+    }
+
+    /** Hapus semua lagu yang sudah diunduh (file audio, cover, dan indeksnya). */
+    fun removeAll() {
+        val all = _downloaded.value
+        if (all.isEmpty()) return
+        _downloaded.value = emptyList()
+        all.forEach { entry ->
+            runCatching { File(entry.audioPath).delete() }
+            entry.coverPath?.let { runCatching { File(it).delete() } }
+        }
+        persist()
+    }
+
+    /**
+     * True (dan memberi tahu lewat Toast) kalau unduhan sedang dibatasi Wi-Fi saja tetapi perangkat
+     * memakai data seluler. Jaringan yang tidak dikenal dianggap boleh, supaya unduhan tidak macet.
+     */
+    private fun blockedByWifiOnly(): Boolean {
+        if (!SettingsRepository.getInstance(appContext).downloadWifiOnly.value) return false
+        val cm = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        val onMobileOnly = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+                !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+        if (onMobileOnly) {
+            _events.tryEmit("Unduhan hanya lewat Wi-Fi. Sambungkan Wi-Fi atau matikan pembatasan di Pengaturan")
+        }
+        return onMobileOnly
     }
 
     fun remove(songUrl: String) {

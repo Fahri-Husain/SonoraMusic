@@ -489,6 +489,11 @@ fun AppRoot(
                         val streamQuality by settingsViewModel.streamQuality.collectAsState()
                         val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
+                        val pauseOnUnplug by settingsViewModel.pauseOnUnplug.collectAsState()
+                        val sleepTimerEndAt by settingsViewModel.sleepTimerEndAt.collectAsState()
+                        val downloadWifiOnly by settingsViewModel.downloadWifiOnly.collectAsState()
+                        val downloadedSongs by settingsViewModel.downloaded.collectAsState()
+                        val cacheBytes by settingsViewModel.cacheBytes.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             SettingsScreen(
                                 onBack = { navController.popBackStack() },
@@ -502,6 +507,17 @@ fun AppRoot(
                                 onStreamQualityChange = settingsViewModel::setStreamQuality,
                                 onDownloadQualityChange = settingsViewModel::setDownloadQuality,
                                 onSkipSilenceChange = settingsViewModel::setSkipSilence,
+                                pauseOnUnplug = pauseOnUnplug,
+                                onPauseOnUnplugChange = settingsViewModel::setPauseOnUnplug,
+                                sleepTimerEndAt = sleepTimerEndAt,
+                                onSleepTimerSet = settingsViewModel::setSleepTimer,
+                                downloadWifiOnly = downloadWifiOnly,
+                                onDownloadWifiOnlyChange = settingsViewModel::setDownloadWifiOnly,
+                                downloadedCount = downloadedSongs.size,
+                                downloadedBytes = downloadedSongs.sumOf { it.sizeBytes },
+                                cacheBytes = cacheBytes,
+                                onClearCache = settingsViewModel::clearCache,
+                                onClearDownloads = settingsViewModel::removeAllDownloads,
                                 onClearSearchHistory = searchViewModel::clearHistory,
                                 onClearPlayHistory = libraryViewModel::clearPlayHistory
                             )
@@ -732,6 +748,10 @@ fun AppRoot(
 }
 
 private fun NavHostController.navigateToTab(route: String) {
+    // Kalau halaman tab tujuan sudah ada di back stack (mis. Beranda -> Artis, lalu ketuk Beranda),
+    // cukup tutup halaman-halaman di atasnya. Jalur popUpTo + saveState + restoreState di bawah
+    // bisa membuat navigasi tidak berpindah saat entri tujuan sudah berada di bawah tumpukan.
+    if (popBackStack(route, inclusive = false)) return
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true

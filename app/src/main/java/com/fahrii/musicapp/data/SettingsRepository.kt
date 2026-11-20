@@ -43,6 +43,21 @@ class SettingsRepository private constructor(context: Context) {
     /** Lewati bagian senyap di dalam lagu. Bawaan: mati. */
     val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
+    private val _pauseOnUnplug = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_ON_UNPLUG, true))
+    /** Jeda otomatis saat headset dicabut atau Bluetooth terputus. Bawaan: nyala. */
+    val pauseOnUnplug: StateFlow<Boolean> = _pauseOnUnplug.asStateFlow()
+
+    private val _downloadWifiOnly = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_WIFI_ONLY, false))
+    /** Unduhan baru hanya boleh jalan lewat Wi-Fi (bukan data seluler). Bawaan: mati. */
+    val downloadWifiOnly: StateFlow<Boolean> = _downloadWifiOnly.asStateFlow()
+
+    private val _sleepTimerEndAt = MutableStateFlow(0L)
+    /**
+     * Kapan timer tidur habis (epoch ms); 0 = timer mati. Sengaja tidak disimpan ke SharedPreferences:
+     * timer hanya berlaku selama aplikasi hidup, dan PlaybackService yang menjeda pemutar saat habis.
+     */
+    val sleepTimerEndAt: StateFlow<Long> = _sleepTimerEndAt.asStateFlow()
+
     private fun readQuality(key: String): AudioQuality =
         runCatching { AudioQuality.valueOf(prefs.getString(key, null) ?: "") }
             .getOrDefault(AudioQuality.HIGH)
@@ -60,6 +75,25 @@ class SettingsRepository private constructor(context: Context) {
     fun setSkipSilence(enabled: Boolean) {
         _skipSilence.value = enabled
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
+    }
+
+    fun setPauseOnUnplug(enabled: Boolean) {
+        _pauseOnUnplug.value = enabled
+        prefs.edit().putBoolean(KEY_PAUSE_ON_UNPLUG, enabled).apply()
+    }
+
+    fun setDownloadWifiOnly(enabled: Boolean) {
+        _downloadWifiOnly.value = enabled
+        prefs.edit().putBoolean(KEY_DOWNLOAD_WIFI_ONLY, enabled).apply()
+    }
+
+    /** Nyalakan timer tidur [minutes] menit dari sekarang. */
+    fun startSleepTimer(minutes: Int) {
+        _sleepTimerEndAt.value = System.currentTimeMillis() + minutes * 60_000L
+    }
+
+    fun cancelSleepTimer() {
+        _sleepTimerEndAt.value = 0L
     }
 
     /** Lama crossfade yang berlaku sekarang dalam milidetik; 0 kalau crossfade mati. */
@@ -88,6 +122,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_STREAM_QUALITY = "stream_quality"
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_SKIP_SILENCE = "skip_silence"
+        private const val KEY_PAUSE_ON_UNPLUG = "pause_on_unplug"
+        private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
 
         @Volatile
         private var instance: SettingsRepository? = null
