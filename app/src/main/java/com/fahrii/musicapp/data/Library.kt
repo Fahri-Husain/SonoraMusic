@@ -76,6 +76,19 @@ class LibraryRepository private constructor(private val context: Context) {
         persist()
     }
 
+    /** Buat playlist berisi [songs] (hasil impor dari link) dan kembalikan id-nya. */
+    fun createPlaylistWithSongs(name: String, songs: List<Song>): String {
+        val playlist = Playlist(
+            id = UUID.randomUUID().toString(),
+            name = name.trim().ifEmpty { "Playlist impor" },
+            songs = songs.distinctBy { it.url },
+            createdAt = System.currentTimeMillis()
+        )
+        _state.update { it.copy(playlists = it.playlists + playlist) }
+        persist()
+        return playlist.id
+    }
+
     fun deletePlaylist(id: String) {
         val thumb = _state.value.playlists.firstOrNull { it.id == id }?.thumbnailPath
         _state.update { s ->

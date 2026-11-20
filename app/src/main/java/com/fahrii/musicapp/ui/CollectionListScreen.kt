@@ -240,15 +240,17 @@ private fun CollectionSongRow(
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
-            Text(
-                text = song.artist,
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                )
+            }
         }
         IconButton(onClick = onMore) {
             Icon(AppIcons.MoreVert, contentDescription = "Opsi")

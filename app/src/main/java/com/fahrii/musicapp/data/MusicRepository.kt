@@ -258,6 +258,43 @@ object MusicRepository {
 
     private fun isAlbumPlaylistUrl(url: String): Boolean = "list=OLAK5uy_" in url
 
+    /**
+     * Playlist YouTube / YouTube Music dari ID-nya ("list=..." di link) untuk fitur impor playlist.
+     * Maksimal [maxSongs] lagu; melempar exception kalau playlist tidak ada atau bersifat pribadi.
+     */
+    suspend fun loadYouTubePlaylist(listId: String, maxSongs: Int): ImportedPlaylist =
+        withContext(Dispatchers.IO) {
+            ensureInit()
+            val url = "https://www.youtube.com/playlist?list=$listId"
+            val info = PlaylistInfo.getInfo(ServiceList.YouTube, url)
+
+            val streams = info.relatedItems.filterIsInstance<StreamInfoItem>().toMutableList()
+            var page = info.nextPage
+            while (page != null && streams.size < maxSongs) {
+                val more = PlaylistInfo.getMoreItems(ServiceList.YouTube, url, page)
+                streams += more.items.filterIsInstance<StreamInfoItem>()
+                page = more.nextPage
+            }
+
+            val capped = streams.size > maxSongs || (page != null && streams.size >= maxSongs)
+            ImportedPlaylist(
+                name = info.name?.takeIf { it.isNotBlank() } ?: "Playlist YouTube",
+                songs = streams.take(maxSongs)
+                    .map { item ->
+                        Song(
+                            url = item.url,
+                            title = item.name,
+                            // Kanal YouTube Music resmi bernama "Artis - Topic"
+                            artist = (item.uploaderName ?: "").removeSuffix(" - Topic").ifBlank { "Unknown artist" },
+                            thumbnailUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                            durationSeconds = item.duration
+                        )
+                    }
+                    .distinctBy { it.url },
+                note = if (capped) "Hanya $maxSongs lagu pertama yang diimpor." else null
+            )
+        }
+
     /** Ambil semua lagu dari playlist album [playlistUrl] (maksimal beberapa halaman). Null kalau kosong. */
     private fun loadAlbumPlaylist(
         playlistUrl: String,
@@ -435,6 +472,22 @@ object MusicRepository {
         val url = audio.content
         urlCache[videoUrl] = CachedUrl(url, now + URL_TTL_MS)
         return url
+    }
+
+    /**
+     * URL stream audio untuk [songUrl] (kunci lagu di aplikasi), dengan aturan yang sama seperti
+     * di PlaybackService: "sonora://search?q=..." dicari dulu di YouTube Music, link YouTube
+     * langsung diambil streamnya. Dipakai pengunduh; blocking, panggil dari thread background.
+     */
+    fun resolvePlayableUrlBlocking(songUrl: String): String {
+        val uri = android.net.Uri.parse(songUrl)
+        return when {
+            uri.scheme == "sonora" -> {
+                val query = uri.getQueryParameter("q").orEmpty()
+                resolveAudioUrlBlocking(findVideoUrlBlocking(query))
+            }
+            else -> resolveAudioUrlBlocking(songUrl)
+        }
     }
 
     private val searchCache = ConcurrentHashMap<String, String>()

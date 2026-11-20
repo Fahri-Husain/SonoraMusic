@@ -68,6 +68,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.fahrii.musicapp.data.DownloadStatus
 import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.Playlist
 import com.fahrii.musicapp.data.Song
@@ -110,7 +111,12 @@ fun PlaylistScreen(
     onRequestAlbum: (Song) -> Unit,
     onOpenArtist: (String) -> Unit,
     onOpenAlbum: (ArtistAlbum) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    downloadedUrls: Set<String> = emptySet(),
+    downloadingUrls: Set<String> = emptySet(),
+    onDownloadSong: (Song) -> Unit = {},
+    onDownloadAll: (List<Song>) -> Unit = {},
+    onRemoveDownload: (Song) -> Unit = {}
 ) {
     val context = LocalContext.current
     val songs = playlist.songs
@@ -237,7 +243,7 @@ fun PlaylistScreen(
                         onPlay = { onPlay(shown, 0) },
                         onShuffle = { onPlay(shown.shuffled(), 0) },
                         playLabel = "Play",
-                        onDownload = { toast("Fitur unduhan belum tersedia") }
+                        onDownload = { onDownloadAll(shown) }
                     )
                 }
             }
@@ -464,7 +470,16 @@ fun PlaylistScreen(
             onDismiss = { menuSong = null },
             remove = SongMenuRemove("Menghapus lagu ini dari daftar putar") { onRemoveSong(song) },
             onToggleLike = { onToggleLike(song) },
-            onDownload = { toast("Fitur unduhan belum tersedia") },
+            downloadStatus = when {
+                song.url in downloadedUrls -> DownloadStatus.Downloaded
+                song.url in downloadingUrls -> DownloadStatus.Downloading
+                else -> DownloadStatus.None
+            },
+            onDownload = { onDownloadSong(song) },
+            onRemoveDownload = {
+                onRemoveDownload(song)
+                toast("Unduhan dihapus")
+            },
             onAddToPlaylist = { addToPlaylistSong = song },
             onPlayNext = {
                 onPlayNext(song)
@@ -577,14 +592,16 @@ private fun PlaylistTrackRow(
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                 )
-                Text(
-                    text = song.artist,
-                    fontSize = 13.sp,
-                    color = Sonora.TextSecondary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
-                    modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-                )
+                ArtistLine(song.url) { mod ->
+                    Text(
+                        text = song.artist,
+                        fontSize = 13.sp,
+                        color = Sonora.TextSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                    )
+                }
             }
             if (reorder) {
                 IconButton(onClick = onMoveUp, enabled = canMoveUp) {

@@ -12,6 +12,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.SettingsRepository
 import java.io.IOException
@@ -26,9 +27,17 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
 
+        val downloads = DownloadRepository.getInstance(this)
+
         // Ubah link YouTube di antrian jadi URL stream audio, tepat saat lagu mau diputar
         val resolver = ResolvingDataSource.Resolver { dataSpec ->
             val uri = dataSpec.uri
+
+            // Lagu yang sudah diunduh diputar dari file lokal: tanpa internet, tanpa ambil stream
+            downloads.localFile(uri.toString())?.let { file ->
+                return@Resolver dataSpec.withUri(Uri.fromFile(file))
+            }
+
             try {
                 when {
                     // Lagu dari Beranda: cari dulu di YouTube Music, lalu ambil stream audionya

@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 import com.fahrii.musicapp.data.ArtistAlbum
+import com.fahrii.musicapp.data.DownloadStatus
 import com.fahrii.musicapp.data.Song
 
 /**
@@ -83,6 +84,8 @@ private fun SongMenuContent(
     val context = LocalContext.current
     val library by libraryViewModel.state.collectAsState()
     val songAlbums by libraryViewModel.songAlbums.collectAsState()
+    val downloadedUrls by libraryViewModel.downloadedUrls.collectAsState()
+    val downloadingUrls by libraryViewModel.downloadingUrls.collectAsState()
     var addToPlaylistSong by remember { mutableStateOf<Song?>(null) }
 
     val toast: (String) -> Unit = { Toast.makeText(context, it, Toast.LENGTH_SHORT).show() }
@@ -97,7 +100,16 @@ private fun SongMenuContent(
         onDismiss = onDismiss,
         remove = target.remove,
         onToggleLike = { libraryViewModel.toggleLike(song) },
-        onDownload = { toast("Fitur unduhan belum tersedia") },
+        downloadStatus = when {
+            song.url in downloadedUrls -> DownloadStatus.Downloaded
+            song.url in downloadingUrls -> DownloadStatus.Downloading
+            else -> DownloadStatus.None
+        },
+        onDownload = { libraryViewModel.downloadSong(song) },
+        onRemoveDownload = {
+            libraryViewModel.removeDownload(song.url)
+            toast("Unduhan dihapus")
+        },
         onAddToPlaylist = { addToPlaylistSong = song },
         onPlayNext = {
             playerViewModel.playNext(song)

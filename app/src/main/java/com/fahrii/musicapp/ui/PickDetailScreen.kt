@@ -289,14 +289,16 @@ internal fun TrackRow(
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
-            Text(
-                text = song.artist,
-                fontSize = 13.sp,
-                color = Sonora.TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    fontSize = 13.sp,
+                    color = Sonora.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                )
+            }
         }
         if (song.durationSeconds > 0) {
             Spacer(Modifier.width(12.dp))

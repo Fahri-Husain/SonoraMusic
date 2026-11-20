@@ -194,13 +194,16 @@ private fun AlbumTrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = song.artist,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = mod
+                )
+            }
         }
         // Ritme lagu yang sedang aktif, di sebelah kiri durasi: bergerak saat diputar, diam saat dijeda
         if (isCurrent) {

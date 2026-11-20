@@ -1029,13 +1029,16 @@ private fun TopSongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = "${item.song.artist} · ${item.plays} ${if (item.plays == 1) "Play" else "Plays"}",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            ArtistLine(item.song.url) { mod ->
+                Text(
+                    text = "${item.song.artist} · ${item.plays} ${if (item.plays == 1) "Play" else "Plays"}",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = mod
+                )
+            }
         }
         IconButton(onClick = { songMenu.show(item.song) }) {
             Icon(AppIcons.MoreVert, contentDescription = "Opsi")
@@ -1237,13 +1240,16 @@ private fun AlbumTrackRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = if (plays > 0) "${song.artist} · $plays ${if (plays == 1) "Play" else "Plays"}" else song.artist,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = if (plays > 0) "${song.artist} · $plays ${if (plays == 1) "Play" else "Plays"}" else song.artist,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = mod
+                )
+            }
         }
         // Ritme lagu aktif, di sebelah kiri durasi: bergerak saat diputar, diam saat dijeda
         if (isCurrent) {

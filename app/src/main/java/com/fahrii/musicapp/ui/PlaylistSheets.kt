@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.fahrii.musicapp.data.DownloadStatus
 import com.fahrii.musicapp.data.Playlist
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.launch
@@ -111,6 +114,17 @@ private fun SheetItem(
     }
 }
 
+/** Menu titik tiga di pojok kanan atas tab "Your Playlist" di Koleksi. */
+@Composable
+fun LibraryOptionsSheet(
+    onDismiss: () -> Unit,
+    onImportPlaylist: () -> Unit
+) {
+    ActionSheet(onDismiss = onDismiss) { dismissThen ->
+        SheetItem(Icons.Filled.Link, "Import playlist dari link", onClick = { dismissThen(onImportPlaylist) })
+    }
+}
+
 /** Menu titik tiga di pojok kanan atas halaman playlist. */
 @Composable
 fun PlaylistOptionsSheet(
@@ -153,7 +167,9 @@ fun SongOptionsSheet(
     onOpenArtist: () -> Unit,
     onOpenAlbum: () -> Unit,
     onPlayRadio: () -> Unit,
-    onShare: () -> Unit
+    onShare: () -> Unit,
+    downloadStatus: DownloadStatus = DownloadStatus.None,
+    onRemoveDownload: () -> Unit = {}
 ) {
     ActionSheet(
         onDismiss = onDismiss,
@@ -207,7 +223,14 @@ fun SongOptionsSheet(
             onClick = { dismissThen(onToggleLike) },
             iconTint = if (liked) HeartColor else Color.White
         )
-        SheetItem(AppIcons.Download, "Unduh", onClick = { dismissThen(onDownload) })
+        when (downloadStatus) {
+            DownloadStatus.None ->
+                SheetItem(AppIcons.Download, "Unduh", onClick = { dismissThen(onDownload) })
+            DownloadStatus.Downloading ->
+                SheetItem(AppIcons.Download, "Mengunduh…", onClick = {}, enabled = false)
+            DownloadStatus.Downloaded ->
+                SheetItem(AppIcons.DeleteFilled, "Hapus unduhan", onClick = { dismissThen(onRemoveDownload) })
+        }
         // Menu ini sengaja tidak ditutup: sheet playlist muncul di atasnya (seperti bar di bawah)
         SheetItem(AppIcons.PlaylistAdd, "Tambahkan ke playlist", onClick = onAddToPlaylist)
         SheetItem(AppIcons.PlayNext, "Putar selanjutnya", onClick = { dismissThen(onPlayNext) })

@@ -623,14 +623,16 @@ private fun SongRow(song: Song, isCurrent: Boolean, isPlaying: Boolean, onClick:
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                )
+            }
         }
         Spacer(Modifier.width(8.dp))
         Text(

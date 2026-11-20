@@ -26,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -39,7 +40,9 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import android.widget.Toast
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -77,12 +80,34 @@ fun LibraryScreen(
     onCreatePlaylist: (String) -> Unit,
     onPlayHistory: (List<Song>, Int) -> Unit,
     onRemoveHistory: (Song) -> Unit,
+    importState: PlaylistImportState,
+    onImportPlaylist: (String) -> Unit,
+    onCancelImport: () -> Unit,
+    onImportConsumed: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showCreate by remember { mutableStateOf(false) }
+    var showLibraryMenu by remember { mutableStateOf(false) }
+    var showImport by rememberSaveable { mutableStateOf(false) }
     // 0 = Your Library, 1 = Your Playlist
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val recent = remember(history) { history.take(HISTORY_PREVIEW).map { it.song } }
+
+    // Impor selesai: tutup dialog, kabarkan hasilnya, lalu buka playlist barunya
+    LaunchedEffect(importState) {
+        if (importState is PlaylistImportState.Done) {
+            showImport = false
+            val message = buildString {
+                append("Playlist \"${importState.name}\" diimpor (${importState.songCount} lagu)")
+                importState.note?.let { append(". ").append(it) }
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            onImportConsumed()
+            tab = 1
+            onOpenPlaylist(importState.playlistId)
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -99,6 +124,14 @@ fun LibraryScreen(
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f)
                 )
+                // Ruangnya selalu ada (tinggi header tetap saat pindah tab); tombolnya hanya di "Your Playlist"
+                Box(modifier = Modifier.size(32.dp), contentAlignment = Alignment.Center) {
+                    if (tab == 1) {
+                        IconButton(onClick = { showLibraryMenu = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(AppIcons.MoreVert, contentDescription = "Opsi playlist", modifier = Modifier.size(22.dp))
+                        }
+                    }
+                }
             }
         }
 
@@ -268,6 +301,24 @@ fun LibraryScreen(
             onDismiss = { showCreate = false }
         )
     }
+
+    if (showLibraryMenu) {
+        LibraryOptionsSheet(
+            onDismiss = { showLibraryMenu = false },
+            onImportPlaylist = { showImport = true }
+        )
+    }
+
+    if (showImport) {
+        ImportPlaylistDialog(
+            state = importState,
+            onImport = onImportPlaylist,
+            onDismiss = {
+                showImport = false
+                onCancelImport()
+            }
+        )
+    }
 }
 
 @Composable
@@ -366,14 +417,16 @@ private fun HistoryRow(
                 overflow = TextOverflow.Clip,
                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
             )
-            Text(
-                text = song.artist,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                )
+            }
         }
         IconButton(onClick = { songMenu.show(song, SongMenuRemove("Hapus dari riwayat", onRemove)) }) {
             Icon(AppIcons.MoreVert, contentDescription = "Opsi")

@@ -462,13 +462,16 @@ private fun PopularSongRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = song.artist,
-                fontSize = 13.sp,
-                color = Sonora.TextSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            ArtistLine(song.url) { mod ->
+                Text(
+                    text = song.artist,
+                    fontSize = 13.sp,
+                    color = Sonora.TextSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = mod
+                )
+            }
         }
         IconButton(onClick = { songMenu.show(song) }) {
             Icon(AppIcons.MoreVert, contentDescription = "Opsi")

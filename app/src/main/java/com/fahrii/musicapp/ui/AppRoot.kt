@@ -66,6 +66,7 @@ private const val ROUTE_HOME = "home"
 private const val ROUTE_SEARCH = "search"
 private const val ROUTE_LIBRARY = "library"
 private const val ROUTE_LIKED = "liked"
+private const val ROUTE_DOWNLOADS = "downloads"
 private const val ROUTE_PLAYLIST = "playlist/{id}"
 private const val ROUTE_PICK = "pick/{index}"
 private const val ROUTE_REPLAY = "replay"
@@ -102,7 +103,16 @@ fun AppRoot(
     val playerState by playerViewModel.state.collectAsState()
     val library by libraryViewModel.state.collectAsState()
     val playHistory by libraryViewModel.playHistory.collectAsState()
+    // Ikon "terunduh" di setiap baris lagu membaca daftar ini lewat LocalDownloadedUrls
+    val downloadedUrls by libraryViewModel.downloadedUrls.collectAsState()
     val context = LocalContext.current
+
+    // Pesan unduhan (mulai, selesai, gagal) tampil sebagai Toast di layar mana pun
+    LaunchedEffect(libraryViewModel) {
+        libraryViewModel.downloadEvents.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
 
     val route = backStackEntry?.destination?.route
@@ -127,7 +137,7 @@ fun AppRoot(
     var playerClosedBySwipe by remember { mutableStateOf(false) }
     val onPlayerScreen = showPlayer
     val currentTab = when (route) {
-        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST, ROUTE_ALBUM -> BottomTab.COLLECTION
+        ROUTE_LIBRARY, ROUTE_LIKED, ROUTE_DOWNLOADS, ROUTE_PLAYLIST, ROUTE_REPLAY, ROUTE_MOST_PLAYED, ROUTE_ARTIST, ROUTE_ALBUM -> BottomTab.COLLECTION
         ROUTE_SEARCH -> BottomTab.SEARCH
         else -> BottomTab.HOME
     }
@@ -182,7 +192,8 @@ fun AppRoot(
 
             CompositionLocalProvider(
                 LocalBottomInset provides bottomInset,
-                LocalSongMenu provides songMenu
+                LocalSongMenu provides songMenu,
+                LocalDownloadedUrls provides downloadedUrls
             ) {
                 NavHost(
                     navController = navController,
@@ -255,6 +266,8 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_LIBRARY) {
+                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat impor berjalan
+                        val importState by libraryViewModel.importState.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             LibraryScreen(
                                 library = library,
@@ -264,13 +277,15 @@ fun AppRoot(
                                 onOpenFavorites = { navController.navigate(ROUTE_LIKED) },
                                 onOpenReplay = { navController.navigate(ROUTE_REPLAY) },
                                 onOpenMostPlayed = { navController.navigate(ROUTE_MOST_PLAYED) },
-                                onOpenDownloads = {
-                                    Toast.makeText(context, "Fitur unduhan belum tersedia", Toast.LENGTH_SHORT).show()
-                                },
+                                onOpenDownloads = { navController.navigate(ROUTE_DOWNLOADS) },
                                 onOpenPlaylist = { id -> navController.navigate("playlist/$id") },
                                 onCreatePlaylist = { name -> libraryViewModel.createPlaylist(name) },
                                 onPlayHistory = { songs, index -> playerViewModel.playQueue(songs, index, "Riwayat") },
-                                onRemoveHistory = { libraryViewModel.removeFromHistory(it.url) }
+                                onRemoveHistory = { libraryViewModel.removeFromHistory(it.url) },
+                                importState = importState,
+                                onImportPlaylist = libraryViewModel::importPlaylist,
+                                onCancelImport = libraryViewModel::cancelImport,
+                                onImportConsumed = libraryViewModel::consumeImport
                             )
                         }
                     }
@@ -481,6 +496,21 @@ fun AppRoot(
                         }
                     }
 
+                    composable(ROUTE_DOWNLOADS) {
+                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat daftar unduhan berubah
+                        val downloadedSongs by libraryViewModel.downloadedSongs.collectAsState()
+                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                            CollectionListScreen(
+                                title = "Diunduh",
+                                songs = downloadedSongs,
+                                onBack = { navController.popBackStack() },
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Diunduh") },
+                                currentSongUrl = playerState.currentSong?.url,
+                                isPlaying = playerState.isPlaying
+                            )
+                        }
+                    }
+
                     composable(
                         route = ROUTE_PLAYLIST,
                         arguments = listOf(navArgument("id") { type = NavType.StringType })
@@ -490,6 +520,7 @@ fun AppRoot(
                         // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat nama album ditemukan
                         val songAlbums by libraryViewModel.songAlbums.collectAsState()
                         val likedUrls = remember(library.liked) { library.liked.map { it.url }.toSet() }
+                        val downloadingUrls by libraryViewModel.downloadingUrls.collectAsState()
 
                         if (playlist == null) {
                             LaunchedEffect(Unit) { navController.popBackStack() }
@@ -516,7 +547,12 @@ fun AppRoot(
                                 onRemoveFromPlaylist = { target, song -> libraryViewModel.removeFromPlaylist(target.id, song.url) },
                                 onRequestAlbum = libraryViewModel::requestSongAlbum,
                                 onOpenArtist = { name -> navController.navigate("artist/${Uri.encode(name)}") },
-                                onOpenAlbum = ::openAlbum
+                                onOpenAlbum = ::openAlbum,
+                                downloadedUrls = downloadedUrls,
+                                downloadingUrls = downloadingUrls,
+                                onDownloadSong = libraryViewModel::downloadSong,
+                                onDownloadAll = libraryViewModel::downloadSongs,
+                                onRemoveDownload = { libraryViewModel.removeDownload(it.url) }
                             )
                         }
                     }

@@ -137,14 +137,16 @@ fun SongListScreen(
                                 overflow = TextOverflow.Clip,
                                 modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
                             )
-                            Text(
-                                text = song.artist,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Clip,
-                                modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
-                            )
+                            ArtistLine(song.url) { mod ->
+                                Text(
+                                    text = song.artist,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = mod.basicMarquee(iterations = Int.MAX_VALUE)
+                                )
+                            }
                         }
                         IconButton(onClick = { onRemove(song) }) {
                             Icon(
