@@ -3,6 +3,7 @@ package com.fahrii.musicapp.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.ChartRepository
 import com.fahrii.musicapp.data.MusicRepository
@@ -39,8 +40,16 @@ data class HomeUiState(
     val newReleases: List<Song> = emptyList(),
     val trending: List<Song> = emptyList(),
     val isLoading: Boolean = true,
+    // True selama kartu Pilihan Cepat masih diambil; dipakai untuk menampilkan skeleton
+    val quickPicksLoading: Boolean = true,
     val error: String? = null
 )
+
+// Jumlah lagu per baris Beranda yang tampil (sama dengan HOME_ROW_LIMIT di HomeScreen)
+private const val HOME_PREFETCH_COUNT = 10
+
+// Jumlah kartu per baris yang langsung terlihat tanpa menggeser
+private const val HOME_VISIBLE_COUNT = 4
 
 class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
@@ -81,10 +90,21 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 loadSubscribers(top)
             }
 
+            val releaseSongs = r.getOrDefault(emptyList())
+            val trendingSongs = t.getOrDefault(emptyList())
+            // Lengkapi nama artis kolaborasi untuk kartu yang langsung terlihat di layar sebelum daftar
+            // muncul, supaya namanya tidak berubah di depan mata. Sisanya (di luar layar, perlu digeser)
+            // dilengkapi di latar belakang tanpa menahan tampilan.
+            val visible = releaseSongs.take(HOME_VISIBLE_COUNT) + trendingSongs.take(HOME_VISIBLE_COUNT)
+            val offscreen = releaseSongs.drop(HOME_VISIBLE_COUNT).take(HOME_PREFETCH_COUNT - HOME_VISIBLE_COUNT) +
+                    trendingSongs.drop(HOME_VISIBLE_COUNT).take(HOME_PREFETCH_COUNT - HOME_VISIBLE_COUNT)
+            ArtistNames.prefetch(visible, timeoutMs = 6_000)
+            viewModelScope.launch { ArtistNames.prefetch(offscreen, timeoutMs = 60_000) }
+
             _state.update {
                 it.copy(
-                    newReleases = r.getOrDefault(emptyList()),
-                    trending = t.getOrDefault(emptyList()),
+                    newReleases = releaseSongs,
+                    trending = trendingSongs,
                     isLoading = false,
                     error = if (r.isFailure && t.isFailure) {
                         "Gagal memuat. Periksa koneksi internet."
@@ -156,6 +176,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
      */
     private fun loadQuickPicks() {
         if (quickPicksJob?.isActive == true) return
+        _state.update { it.copy(quickPicksLoading = true) }
         quickPicksJob = viewModelScope.launch {
             val repo = QuickPickRepository.getInstance(getApplication<Application>())
             val now = System.currentTimeMillis()
@@ -195,5 +216,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 show(label, songs)
             }
         }
+        // Selesai (berhasil atau gagal): skeleton tidak boleh menyala selamanya
+        quickPicksJob?.invokeOnCompletion { _state.update { it.copy(quickPicksLoading = false) } }
     }
 }

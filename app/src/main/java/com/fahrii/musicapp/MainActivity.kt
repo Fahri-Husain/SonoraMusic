@@ -17,6 +17,8 @@ import com.fahrii.musicapp.ui.AppTypography
 import com.fahrii.musicapp.ui.LibraryViewModel
 import com.fahrii.musicapp.ui.PlayerViewModel
 import com.fahrii.musicapp.ui.SonoraColorScheme
+import com.fahrii.musicapp.ui.UpdatePrompt
+import com.fahrii.musicapp.ui.UpdateViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -30,6 +32,8 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         requestNotificationPermissionIfNeeded()
+        // Muat nama artis kolaborasi dari file sebelum layar pertama tampil, supaya tidak ada delay
+        com.fahrii.musicapp.data.ArtistNames.init(applicationContext)
 
         setContent {
             MaterialTheme(
@@ -39,6 +43,9 @@ class MainActivity : ComponentActivity() {
                 val playerViewModel: PlayerViewModel = viewModel()
                 val libraryViewModel: LibraryViewModel = viewModel()
                 AppRoot(playerViewModel, libraryViewModel)
+                // Muncul kalau ada rilis baru di GitHub yang lebih baru dari versi terpasang
+                val updateViewModel: UpdateViewModel = viewModel()
+                UpdatePrompt(updateViewModel)
             }
         }
     }

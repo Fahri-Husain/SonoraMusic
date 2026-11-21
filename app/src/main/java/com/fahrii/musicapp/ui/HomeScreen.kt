@@ -175,6 +175,9 @@ fun HomeScreen(
                         itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
                             QuickPickCard(
                                 pick = pick,
+                                // Skeleton selama Beranda masih memuat (sama dengan Rilis Baru dan Lagu Trending),
+                                // atau kalau kartu ini memang belum punya lagu sama sekali
+                                loading = state.isLoading || (state.quickPicksLoading && pick.songs.isEmpty()),
                                 glowPosition = glowPosition,
                                 onOpen = { onPickClick(index) },
                                 onPlay = { onPlay(pick.songs, 0, "Pilihan Cepat \"${pick.label}\"") },
@@ -189,7 +192,7 @@ fun HomeScreen(
                 item {
                     Column {
                         SectionTitle("Rilis Baru", onSeeAll = onSeeAllNewReleases)
-                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", onPlay, onOpenAlbum)
+                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", state.isLoading, onPlay, onOpenAlbum)
                     }
                 }
             }
@@ -197,27 +200,32 @@ fun HomeScreen(
             item {
                 Column {
                     SectionTitle("Lagu Trending", onSeeAll = onSeeAllTrending)
-                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", onPlay, onOpenAlbum)
+                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", state.isLoading, onPlay, onOpenAlbum)
                 }
             }
 
             item {
                 Column {
                     SectionTitle("Genre")
-                    GenreGrid(onGenreClick)
+                    GenreGrid(loading = state.isLoading, onGenreClick = onGenreClick)
                 }
             }
 
             item {
                 Column {
                     SectionTitle("Artis Pilihan")
-                    artists.forEachIndexed { index, artist ->
-                        ArtistRow(
-                            rank = index + 1,
-                            artist = artist,
-                            subscribers = subscribers[artist.name],
-                            onClick = { onArtistClick(artist.name) }
-                        )
+                    if (state.isLoading) {
+                        // Skeleton selagi Beranda memuat (tiga artis teratas)
+                        repeat(3) { index -> ArtistRowSkeleton(rank = index + 1) }
+                    } else {
+                        artists.forEachIndexed { index, artist ->
+                            ArtistRow(
+                                rank = index + 1,
+                                artist = artist,
+                                subscribers = subscribers[artist.name],
+                                onClick = { onArtistClick(artist.name) }
+                            )
+                        }
                     }
                 }
             }
@@ -365,6 +373,7 @@ private const val PANEL_LEFT_FRACTION = 0.74f  // tinggi panel di sisi kiri rela
 @Composable
 private fun QuickPickCard(
     pick: QuickPick,
+    loading: Boolean,
     glowPosition: State<Float>,
     onOpen: () -> Unit,
     onPlay: () -> Unit,
@@ -401,7 +410,7 @@ private fun QuickPickCard(
                 // Lapisan depan
                 drawRoundRect(Color.Black, size = Size(size.width, frontH), cornerRadius = r)
             }
-            .clickable(onClick = onOpen)
+            .clickable(enabled = !loading, onClick = onOpen)
     ) {
         // Panel cover: bentuknya pas dengan lekukan, dengan tepi bergradasi tipis sebagai pembatas
         Box(
@@ -442,7 +451,11 @@ private fun QuickPickCard(
                         panelShape
                     )
             )
-            Box(
+            if (loading) {
+                // Skeleton selagi daftar lagunya dimuat: menutupi panel, tombol putar belum ada
+                Box(modifier = Modifier.matchParentSize().shimmerBackground())
+            }
+            if (!loading) Box(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(start = 12.dp, top = 12.dp)
@@ -471,8 +484,16 @@ private fun QuickPickCard(
                     end = 14.dp
                 )
         ) {
-            Text(pick.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(pick.subtitle, fontSize = 12.sp, color = Sonora.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (loading) {
+                // Skeleton teks: dua bar setinggi baris label dan subjudul
+                Spacer(Modifier.height(3.dp))
+                Box(modifier = Modifier.width(88.dp).height(13.dp).shimmerBackground(RoundedCornerShape(6.dp)))
+                Spacer(Modifier.height(7.dp))
+                Box(modifier = Modifier.width(130.dp).height(11.dp).shimmerBackground(RoundedCornerShape(6.dp)))
+            } else {
+                Text(pick.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(pick.subtitle, fontSize = 12.sp, color = Sonora.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
@@ -556,6 +577,7 @@ private class StepPanelShape(private val radius: Dp) : Shape {
 private fun SongCardRow(
     songs: List<Song>,
     source: String,
+    loading: Boolean,
     onPlay: (List<Song>, Int, String) -> Unit,
     onOpenAlbum: (ArtistAlbum) -> Unit
 ) {
@@ -564,15 +586,8 @@ private fun SongCardRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (songs.isEmpty()) {
-            // Placeholder selagi memuat
-            items(4) {
-                Box(
-                    modifier = Modifier
-                        .size(132.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(Sonora.Surface)
-                )
-            }
+            // Skeleton selagi memuat
+            if (loading) items(4) { SongCardSkeleton() }
         } else {
             itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
                 SongCard(
@@ -590,6 +605,18 @@ private fun SongCardRow(
                 )
             }
         }
+    }
+}
+
+/** Penanda kartu lagu selagi memuat: bentuknya sama dengan [SongCard] (cover, artis, judul). */
+@Composable
+private fun SongCardSkeleton() {
+    Column(modifier = Modifier.width(132.dp)) {
+        Box(modifier = Modifier.size(132.dp).shimmerBackground(RoundedCornerShape(14.dp)))
+        Spacer(Modifier.height(10.dp))
+        Box(modifier = Modifier.width(96.dp).height(12.dp).shimmerBackground(RoundedCornerShape(6.dp)))
+        Spacer(Modifier.height(8.dp))
+        Box(modifier = Modifier.width(70.dp).height(11.dp).shimmerBackground(RoundedCornerShape(6.dp)))
     }
 }
 
@@ -632,7 +659,7 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
 // ---------- Genre ----------
 
 @Composable
-private fun GenreGrid(onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit) {
+private fun GenreGrid(loading: Boolean, onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit) {
     Row(
         modifier = Modifier
             .horizontalScroll(rememberScrollState())
@@ -642,13 +669,18 @@ private fun GenreGrid(onGenreClick: (name: String, query: String, accentArgb: In
         genres.chunked(3).forEach { column ->
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 column.forEach { genre ->
-                    GenrePill(
-                        genre = genre,
-                        onClick = {
-                            // Nama di pil bisa dua baris ("Dance &\nElektronik"); judul halaman satu baris
-                            onGenreClick(genre.name.replace("\n", " "), genre.query, genre.accent.toArgb())
-                        }
-                    )
+                    if (loading) {
+                        // Skeleton selagi Beranda memuat: ukuran sama dengan GenrePill
+                        Box(modifier = Modifier.size(width = 112.dp, height = 44.dp).shimmerBackground(RoundedCornerShape(12.dp)))
+                    } else {
+                        GenrePill(
+                            genre = genre,
+                            onClick = {
+                                // Nama di pil bisa dua baris ("Dance &\nElektronik"); judul halaman satu baris
+                                onGenreClick(genre.name.replace("\n", " "), genre.query, genre.accent.toArgb())
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -682,6 +714,31 @@ private fun GenrePill(genre: Genre, onClick: () -> Unit, modifier: Modifier = Mo
 }
 
 // ---------- Artis Pilihan ----------
+
+/** Penanda baris artis selagi memuat: nomor urut, foto bulat, nama, dan jumlah subscriber. */
+@Composable
+private fun ArtistRowSkeleton(rank: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "$rank",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.width(32.dp)
+        )
+        Box(modifier = Modifier.size(52.dp).shimmerBackground(CircleShape))
+        Spacer(Modifier.width(12.dp))
+        Column {
+            Box(modifier = Modifier.width(110.dp).height(13.dp).shimmerBackground(RoundedCornerShape(6.dp)))
+            Spacer(Modifier.height(8.dp))
+            Box(modifier = Modifier.width(80.dp).height(11.dp).shimmerBackground(RoundedCornerShape(6.dp)))
+        }
+    }
+}
 
 @Composable
 private fun ArtistRow(rank: Int, artist: ArtistStat, subscribers: Long?, onClick: () -> Unit) {
