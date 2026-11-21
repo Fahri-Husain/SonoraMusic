@@ -36,6 +36,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val pauseOnUnplug: StateFlow<Boolean> = repo.pauseOnUnplug
     val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
     val shakeToSkip: StateFlow<Boolean> = repo.shakeToSkip
+    val autoplay: StateFlow<Boolean> = repo.autoplay
     val doubleTapLike: StateFlow<Boolean> = repo.doubleTapLike
     val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
     val lyricsBlur: StateFlow<Boolean> = repo.lyricsBlur
@@ -73,6 +74,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
 
     fun setShakeToSkip(enabled: Boolean) = repo.setShakeToSkip(enabled)
+
+    fun setAutoplay(enabled: Boolean) = repo.setAutoplay(enabled)
 
     fun setDoubleTapLike(enabled: Boolean) = repo.setDoubleTapLike(enabled)
 

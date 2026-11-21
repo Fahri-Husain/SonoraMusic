@@ -133,6 +133,8 @@ fun SettingsScreen(
     onPauseOnUnplugChange: (Boolean) -> Unit,
     shakeToSkip: Boolean,
     onShakeToSkipChange: (Boolean) -> Unit,
+    autoplay: Boolean,
+    onAutoplayChange: (Boolean) -> Unit,
     doubleTapLike: Boolean,
     onDoubleTapLikeChange: (Boolean) -> Unit,
     lyricsFontSize: LyricsFontSize,
@@ -305,6 +307,19 @@ fun SettingsScreen(
                         Switch(
                             checked = shakeToSkip,
                             onCheckedChange = onShakeToSkipChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Radio,
+                    title = "Putar otomatis",
+                    subtitle = "Saat antrean habis, lanjut ke lagu yang mirip. Tidak berlaku untuk playlist buatanmu sendiri",
+                    trailing = {
+                        Switch(
+                            checked = autoplay,
+                            onCheckedChange = onAutoplayChange,
                             colors = sonoraSwitchColors()
                         )
                     }

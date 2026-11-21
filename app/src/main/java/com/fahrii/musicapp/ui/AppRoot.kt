@@ -492,6 +492,7 @@ fun AppRoot(
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
                         val pauseOnUnplug by settingsViewModel.pauseOnUnplug.collectAsState()
                         val shakeToSkip by settingsViewModel.shakeToSkip.collectAsState()
+                        val autoplay by settingsViewModel.autoplay.collectAsState()
                         val doubleTapLike by settingsViewModel.doubleTapLike.collectAsState()
                         val lyricsFontSize by settingsViewModel.lyricsFontSize.collectAsState()
                         val lyricsBlur by settingsViewModel.lyricsBlur.collectAsState()
@@ -520,6 +521,8 @@ fun AppRoot(
                                 onPauseOnUnplugChange = settingsViewModel::setPauseOnUnplug,
                                 shakeToSkip = shakeToSkip,
                                 onShakeToSkipChange = settingsViewModel::setShakeToSkip,
+                                autoplay = autoplay,
+                                onAutoplayChange = settingsViewModel::setAutoplay,
                                 doubleTapLike = doubleTapLike,
                                 onDoubleTapLikeChange = settingsViewModel::setDoubleTapLike,
                                 lyricsFontSize = lyricsFontSize,
@@ -597,13 +600,14 @@ fun AppRoot(
                                 currentSongUrl = playerState.currentSong?.url,
                                 isPlaying = playerState.isPlaying,
                                 onBack = { navController.popBackStack() },
-                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"") },
+                                // Playlist buatan sendiri: antrean berhenti di lagu terakhir, tanpa putar otomatis
+                                onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"", autoplay = false) },
                                 onRemoveSong = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
                                 onMoveSong = { from, to -> libraryViewModel.moveInPlaylist(playlist.id, from, to) },
                                 onRename = { libraryViewModel.renamePlaylist(playlist.id, it) },
                                 onSetThumbnail = { libraryViewModel.setPlaylistThumbnail(playlist.id, it) },
                                 onDeletePlaylist = { libraryViewModel.deletePlaylist(playlist.id) },
-                                onAddToQueue = { playerViewModel.addToQueue(it, "Playlist \"${playlist.name}\"") },
+                                onAddToQueue = { playerViewModel.addToQueue(it, "Playlist \"${playlist.name}\"", autoplay = false) },
                                 onPlayNext = playerViewModel::playNext,
                                 onToggleLike = libraryViewModel::toggleLike,
                                 onAddToPlaylist = { target, song -> libraryViewModel.addToPlaylist(target.id, song) },

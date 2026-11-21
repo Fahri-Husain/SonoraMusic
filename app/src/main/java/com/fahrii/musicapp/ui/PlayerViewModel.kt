@@ -14,7 +14,10 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.fahrii.musicapp.PlaybackService
+import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.identityKey
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -74,6 +77,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val playerListener = object : Player.Listener {
         override fun onEvents(player: Player, events: Player.Events) {
             syncState(player)
+            maybeAutoplay(player)
         }
 
         // Catat artis tiap lagu baru mulai diputar (untuk "Artis Pilihan")
@@ -124,6 +128,13 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val replay = ReplayRepository.getInstance(app)
     private val settings = SettingsRepository.getInstance(app)
     private var lastRecordedId: String? = null
+
+    // Putar otomatis: begitu lagu terakhir di antrean mulai diputar, ambil lagu yang mirip dan
+    // sambungkan ke antrean (jadi sudah siap sebelum lagu habis, crossfade tetap jalan).
+    // False untuk antrean dari playlist buatan sendiri: antrean itu berhenti di lagu terakhir.
+    private var queueAllowsAutoplay = true
+    private var autoplayJob: Job? = null
+    private var autoplayRequestedFor: String? = null
 
     /**
      * True kalau lagu sebelumnya baru saja diakhiri oleh crossfade: posisi terakhirnya berada di
@@ -176,8 +187,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Putar [songs] sebagai antrian, mulai dari lagu ke-[startIndex]. */
-    fun playQueue(songs: List<Song>, startIndex: Int, source: String? = null) {
+    fun playQueue(songs: List<Song>, startIndex: Int, source: String? = null, autoplay: Boolean = true) {
         if (songs.isEmpty()) return
+        queueAllowsAutoplay = autoplay
+        autoplayRequestedFor = null
+        autoplayJob?.cancel()
         val index = startIndex.coerceIn(0, songs.lastIndex)
         val items = songs.map { it.toMediaItem() }
 
@@ -198,11 +212,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
      * Tambahkan [songs] ke akhir antrian yang sedang berjalan. Kalau belum ada antrian,
      * langsung diputar sebagai antrian baru.
      */
-    fun addToQueue(songs: List<Song>, source: String? = null) {
+    fun addToQueue(songs: List<Song>, source: String? = null, autoplay: Boolean = true) {
         if (songs.isEmpty()) return
         val c = controller
         if (c == null || c.mediaItemCount == 0) {
-            playQueue(songs, 0, source)
+            playQueue(songs, 0, source, autoplay)
             return
         }
         c.addMediaItems(songs.map { it.toMediaItem() })
@@ -319,6 +333,35 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         _progress.update { PlaybackProgress(position, duration) }
+    }
+
+    /**
+     * Kalau lagu yang sedang diputar adalah yang terakhir di antrean (dan putar otomatis boleh),
+     * ambil lagu terkait lalu tambahkan ke akhir antrean. Dilewati kalau mode ulang menyala,
+     * karena itu artinya pengguna ingin mengulang antreannya.
+     */
+    private fun maybeAutoplay(player: Player) {
+        if (!queueAllowsAutoplay || !settings.autoplay.value) return
+        if (player.repeatMode != Player.REPEAT_MODE_OFF || player.hasNextMediaItem()) return
+        val current = player.currentMediaItem ?: return
+        if (autoplayRequestedFor == current.mediaId) return
+        autoplayRequestedFor = current.mediaId
+
+        autoplayJob?.cancel()
+        autoplayJob = viewModelScope.launch {
+            val related = MusicRepository.fetchRelatedSongs(current.mediaId)
+            val c = controller ?: return@launch
+            // Selagi menunggu, pengguna bisa saja ganti lagu atau antrean: jangan sambung kalau sudah tidak cocok
+            if (!queueAllowsAutoplay || c.currentMediaItem?.mediaId != current.mediaId || c.hasNextMediaItem()) {
+                autoplayRequestedFor = null
+                return@launch
+            }
+            val queued = List(c.mediaItemCount) { i -> c.getMediaItemAt(i).toSong() }
+            val queuedUrls = queued.map { it.url }.toSet()
+            val queuedKeys = queued.map { it.identityKey() }.toSet()
+            val fresh = related.filter { it.url !in queuedUrls && it.identityKey() !in queuedKeys }
+            if (fresh.isNotEmpty()) c.addMediaItems(fresh.map { it.toMediaItem() })
+        }
     }
 
     private fun startQueue(c: MediaController, items: List<MediaItem>, startIndex: Int) {

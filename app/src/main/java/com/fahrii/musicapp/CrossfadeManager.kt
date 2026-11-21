@@ -500,6 +500,9 @@ class CrossfadeManager(
             djFilter.cutoffFrequencyHz = HPF_START_HZ
             djFilter.enabled = true
         }
+        // Status crossfade dinyalakan SEBELUM lagu dipindah, supaya saat UI menerima lagu baru,
+        // ia sudah tahu ini crossfade dan memakai transisi panjang (bukan transisi ganti lagu biasa).
+        CrossfadeState.start(remaining.coerceAtMost(currentFadeMs.coerceAtLeast(MIN_REMAINING_MS)))
         selfSeeking = true
         try {
             player.seekToNextMediaItem()

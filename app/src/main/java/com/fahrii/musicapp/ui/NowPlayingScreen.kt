@@ -26,6 +26,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -123,6 +124,8 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.fahrii.musicapp.CrossfadeState
 import com.fahrii.musicapp.data.LyricLine
 import com.fahrii.musicapp.data.ArtistNames
@@ -142,6 +145,25 @@ private const val SONG_CHANGE_BG_MS = 700
 private const val SONG_CHANGE_COVER_MS = 520
 private const val SONG_CHANGE_TEXT_MS = 420
 
+// Saat crossfade: judul muncul dulu, lalu cover dan gradient latar berganti pelan (ala Apple Music)
+private const val XFADE_TEXT_MS = 500
+private const val XFADE_TEXT_DELAY_MS = 200
+private const val XFADE_COVER_DELAY_MS = 500
+
+/** Ukuran cover saat paling kecil di tengah transisi (1f = ukuran penuh). */
+private const val XFADE_COVER_SCALE = 0.85f
+
+/** Easing lembut (masuk dan keluar sama pelan), supaya gerakan tidak terasa "ngebut di awal". */
+private val XFadeEasing = CubicBezierEasing(0.45f, 0f, 0.55f, 1f)
+
+/** Lama cover berganti saat crossfade: mengikuti lama fade audio (60%), dibatasi 1,5-3 detik. */
+private fun crossfadeCoverMs(fadeMs: Long): Int =
+    (fadeMs * 0.6f).toInt().coerceIn(1500, 3000)
+
+/** Lama latar berganti saat crossfade: mengikuti lama fade audio (80%), dibatasi 1,8-3,5 detik. */
+private fun crossfadeBgMs(fadeMs: Long): Int =
+    (fadeMs * 0.8f).toInt().coerceIn(1800, 3500)
+
 @Composable
 fun NowPlayingScreen(
     viewModel: PlayerViewModel,
@@ -158,6 +180,7 @@ fun NowPlayingScreen(
     val state by viewModel.state.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val isCrossfading by CrossfadeState.isCrossfading.collectAsState()
+    val crossfadeFadeMs by CrossfadeState.fadeDurationMs.collectAsState()
     val library by libraryViewModel.state.collectAsState()
     val song = state.currentSong
 
@@ -166,6 +189,15 @@ fun NowPlayingScreen(
             Text("Belum ada lagu yang diputar")
         }
         return
+    }
+
+    // Muat thumbnail lagu berikutnya lebih awal supaya saat transisi mulai gambarnya sudah di cache
+    // (tidak muncul tiba-tiba di tengah animasi).
+    val prefetchContext = LocalContext.current
+    LaunchedEffect(state.nextSong?.thumbnailUrl) {
+        state.nextSong?.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            prefetchContext.imageLoader.enqueue(ImageRequest.Builder(prefetchContext).data(url).build())
+        }
     }
 
     val isLiked = library.liked.any { it.url == song.url }
@@ -351,12 +383,23 @@ fun NowPlayingScreen(
             targetState = song,
             contentKey = { it.url },
             transitionSpec = {
-                fadeIn(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) togetherWith
-                        fadeOut(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) using
-                        SizeTransform(clip = false)
+                if (isCrossfading) {
+                    // Latar baru muncul pelan di atas yang lama (setelah judul), yang lama baru hilang
+                    // sesudahnya. Jadi tidak ada momen latar menipis di tengah transisi.
+                    val ms = crossfadeBgMs(crossfadeFadeMs)
+                    fadeIn(tween(ms, delayMillis = XFADE_COVER_DELAY_MS, easing = XFadeEasing)) togetherWith
+                            fadeOut(tween(1, delayMillis = XFADE_COVER_DELAY_MS + ms)) using
+                            SizeTransform(clip = false)
+                } else {
+                    fadeIn(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) togetherWith
+                            fadeOut(tween(SONG_CHANGE_BG_MS, easing = FastOutSlowInEasing)) using
+                            SizeTransform(clip = false)
+                }
             },
             label = "nowPlayingBackground",
-            modifier = Modifier.fillMaxWidth().height(640.dp)
+            // Blur dipasang sekali di grup (bukan di tiap gambar) supaya saat dua latar tampil
+            // bersamaan hanya ada satu proses blur per frame.
+            modifier = Modifier.fillMaxWidth().height(640.dp).blur(60.dp)
         ) { s ->
             AsyncImage(
                 model = s.thumbnailUrl,
@@ -366,7 +409,6 @@ fun NowPlayingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(640.dp)
-                    .blur(60.dp)
             )
         }
         Box(
@@ -571,6 +613,23 @@ fun NowPlayingScreen(
                             transitionSpec = {
                                 if (committedFromUrl != null) {
                                     EnterTransition.None togetherWith ExitTransition.None
+                                } else if (isCrossfading) {
+                                    // Berurutan, bukan bertumpuk: cover lama mengecil sambil memudar sampai
+                                    // hilang, BARU cover baru muncul sambil membesar. Kalau keduanya tampil
+                                    // bersamaan, yang baru (lebih kecil) terlihat di dalam lingkaran yang
+                                    // lama dan tampak seperti bingkai.
+                                    val half = crossfadeCoverMs(crossfadeFadeMs) / 2
+                                    (fadeIn(tween(half, delayMillis = XFADE_COVER_DELAY_MS + half, easing = XFadeEasing)) +
+                                            scaleIn(
+                                                initialScale = XFADE_COVER_SCALE,
+                                                animationSpec = tween(half, delayMillis = XFADE_COVER_DELAY_MS + half, easing = XFadeEasing)
+                                            )) togetherWith
+                                            (fadeOut(tween(half, delayMillis = XFADE_COVER_DELAY_MS, easing = XFadeEasing)) +
+                                                    scaleOut(
+                                                        targetScale = XFADE_COVER_SCALE,
+                                                        animationSpec = tween(half, delayMillis = XFADE_COVER_DELAY_MS, easing = XFadeEasing)
+                                                    )) using
+                                            SizeTransform(clip = false)
                                 } else {
                                     (fadeIn(tween(SONG_CHANGE_COVER_MS, delayMillis = 80, easing = FastOutSlowInEasing)) +
                                             scaleIn(
@@ -672,10 +731,13 @@ fun NowPlayingScreen(
                 targetState = song,
                 contentKey = { it.url },
                 transitionSpec = {
-                    (fadeIn(tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)) +
-                            slideInVertically(tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
-                            (fadeOut(tween(SONG_CHANGE_TEXT_MS / 2, easing = FastOutSlowInEasing)) +
-                                    slideOutVertically(tween(SONG_CHANGE_TEXT_MS, easing = FastOutSlowInEasing)) { -it / 3 }) using
+                    // Saat crossfade judul muncul paling dulu tapi dengan jeda singkat supaya enak dilihat; ganti lagu biasa jeda 120 ms
+                    val ms = if (isCrossfading) XFADE_TEXT_MS else SONG_CHANGE_TEXT_MS
+                    val delay = if (isCrossfading) XFADE_TEXT_DELAY_MS else 120
+                    (fadeIn(tween(ms, delayMillis = delay, easing = FastOutSlowInEasing)) +
+                            slideInVertically(tween(ms, delayMillis = delay, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
+                            (fadeOut(tween(ms / 2, easing = FastOutSlowInEasing)) +
+                                    slideOutVertically(tween(ms, easing = FastOutSlowInEasing)) { -it / 3 }) using
                             SizeTransform(clip = false)
                 },
                 label = "nowPlayingTitle",

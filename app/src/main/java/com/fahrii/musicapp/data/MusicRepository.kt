@@ -627,6 +627,37 @@ object MusicRepository {
     }
 
     /**
+     * Lagu yang terkait dengan [songUrl] (rekomendasi YouTube) untuk putar otomatis. Lagu dari
+     * Beranda ("sonora://search") dicari dulu video aslinya. Video yang terlalu pendek atau panjang
+     * dibuang supaya yang masuk antrean berupa lagu, bukan podcast atau klip. Kosong kalau gagal.
+     */
+    suspend fun fetchRelatedSongs(songUrl: String, limit: Int = 12): List<Song> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val videoUrl = if (songUrl.startsWith("sonora://")) {
+                    resolveSongMeta(songUrl)?.song?.url
+                } else songUrl
+                if (videoUrl.isNullOrBlank()) return@runCatching emptyList<Song>()
+
+                ensureInit()
+                StreamInfo.getInfo(ServiceList.YouTube, videoUrl).relatedItems
+                    .filterIsInstance<StreamInfoItem>()
+                    .filter { it.duration in 60L..600L }
+                    .map { item ->
+                        Song(
+                            url = item.url,
+                            title = item.name,
+                            artist = (item.uploaderName ?: "").removeSuffix(" - Topic").ifBlank { "Unknown artist" },
+                            thumbnailUrl = hdThumbnail(item.thumbnails.lastOrNull()?.url),
+                            durationSeconds = item.duration
+                        )
+                    }
+                    .distinctBy { it.url }
+                    .take(limit)
+            }.getOrDefault(emptyList())
+        }
+
+    /**
      * Cari lagu di YouTube Music dan kembalikan URL video hasil pertama.
      * Dipanggil dari thread background milik player (untuk lagu dari Beranda).
      */

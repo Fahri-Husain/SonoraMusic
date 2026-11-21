@@ -19,7 +19,18 @@ object CrossfadeState {
      */
     val isCrossfading: StateFlow<Boolean> = _isCrossfading.asStateFlow()
 
+    private val _fadeDurationMs = MutableStateFlow(0L)
+
+    /** Lama fade yang sedang/baru berjalan (ms). Dipakai UI supaya animasi latar selaras dengan audio. */
+    val fadeDurationMs: StateFlow<Long> = _fadeDurationMs.asStateFlow()
+
     internal fun setCrossfading(value: Boolean) {
         _isCrossfading.value = value
+    }
+
+    /** Dipanggil tepat sebelum lagu dipindah, supaya UI sudah tahu ini crossfade saat lagu berganti. */
+    internal fun start(durationMs: Long) {
+        _fadeDurationMs.value = durationMs
+        _isCrossfading.value = true
     }
 }

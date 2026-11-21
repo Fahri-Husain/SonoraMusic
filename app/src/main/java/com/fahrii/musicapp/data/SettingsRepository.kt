@@ -69,6 +69,13 @@ class SettingsRepository private constructor(context: Context) {
     /** Goyang ponsel untuk lagu berikutnya (hanya saat aplikasi terbuka). Bawaan: mati. */
     val shakeToSkip: StateFlow<Boolean> = _shakeToSkip.asStateFlow()
 
+    private val _autoplay = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY, true))
+    /**
+     * Saat antrean habis, otomatis lanjut ke lagu yang mirip dengan lagu terakhir. Tidak berlaku
+     * untuk playlist buatan sendiri. Bawaan: nyala.
+     */
+    val autoplay: StateFlow<Boolean> = _autoplay.asStateFlow()
+
     private val _doubleTapLike = MutableStateFlow(prefs.getBoolean(KEY_DOUBLE_TAP_LIKE, true))
     /** Ketuk dua kali pada cover di halaman Sedang Diputar untuk menyukai lagu. Bawaan: nyala. */
     val doubleTapLike: StateFlow<Boolean> = _doubleTapLike.asStateFlow()
@@ -123,6 +130,11 @@ class SettingsRepository private constructor(context: Context) {
     fun setShakeToSkip(enabled: Boolean) {
         _shakeToSkip.value = enabled
         prefs.edit().putBoolean(KEY_SHAKE_TO_SKIP, enabled).apply()
+    }
+
+    fun setAutoplay(enabled: Boolean) {
+        _autoplay.value = enabled
+        prefs.edit().putBoolean(KEY_AUTOPLAY, enabled).apply()
     }
 
     fun setDoubleTapLike(enabled: Boolean) {
@@ -188,6 +200,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_PAUSE_ON_UNPLUG = "pause_on_unplug"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
         private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
+        private const val KEY_AUTOPLAY = "autoplay"
         private const val KEY_DOUBLE_TAP_LIKE = "double_tap_like"
         private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"
         private const val KEY_LYRICS_BLUR = "lyrics_blur"
