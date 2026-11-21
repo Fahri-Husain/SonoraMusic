@@ -1,10 +1,14 @@
 package com.fahrii.musicapp.ui
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil.imageLoader
 import com.fahrii.musicapp.data.AudioQuality
+import com.fahrii.musicapp.data.BackupException
+import com.fahrii.musicapp.data.BackupManager
+import com.fahrii.musicapp.data.BackupOutcome
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.DownloadedSong
 import com.fahrii.musicapp.data.SettingsRepository
@@ -38,6 +42,16 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     /** Ukuran cache aplikasi (gambar sampul dan berkas sementara), tidak termasuk lagu yang diunduh. */
     val cacheBytes: StateFlow<Long> = _cacheBytes.asStateFlow()
 
+    private val backupManager = BackupManager(app)
+
+    private val _backupBusy = MutableStateFlow(false)
+    /** True selama ekspor/impor cadangan berjalan; dipakai untuk mencegah ketukan ganda. */
+    val backupBusy: StateFlow<Boolean> = _backupBusy.asStateFlow()
+
+    private val _backupOutcome = MutableStateFlow<BackupOutcome?>(null)
+    /** Hasil ekspor/impor terakhir, ditampilkan sebagai dialog sampai ditutup. */
+    val backupOutcome: StateFlow<BackupOutcome?> = _backupOutcome.asStateFlow()
+
     init {
         refreshCacheSize()
     }
@@ -62,6 +76,31 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeAllDownloads() = downloads.removeAll()
+
+    /** Simpan cadangan data ke [uri] (berkas JSON pilihan pengguna). */
+    fun exportBackup(uri: Uri) = runBackup { BackupOutcome.Exported(backupManager.exportTo(uri)) }
+
+    /** Gabungkan cadangan dari [uri]; data yang sudah ada dilewati, hanya yang baru yang masuk. */
+    fun importBackup(uri: Uri) = runBackup { BackupOutcome.Imported(backupManager.importFrom(uri)) }
+
+    fun dismissBackupOutcome() {
+        _backupOutcome.value = null
+    }
+
+    private fun runBackup(block: () -> BackupOutcome) {
+        if (_backupBusy.value) return
+        _backupBusy.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            _backupOutcome.value = try {
+                block()
+            } catch (e: BackupException) {
+                BackupOutcome.Failed(e.message ?: "Cadangan gagal diproses")
+            } catch (e: Exception) {
+                BackupOutcome.Failed("Terjadi kesalahan: ${e.localizedMessage ?: e.javaClass.simpleName}")
+            }
+            _backupBusy.value = false
+        }
+    }
 
     fun refreshCacheSize() {
         viewModelScope.launch(Dispatchers.IO) {

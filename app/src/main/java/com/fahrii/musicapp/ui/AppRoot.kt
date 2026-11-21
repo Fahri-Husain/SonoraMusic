@@ -494,6 +494,8 @@ fun AppRoot(
                         val downloadWifiOnly by settingsViewModel.downloadWifiOnly.collectAsState()
                         val downloadedSongs by settingsViewModel.downloaded.collectAsState()
                         val cacheBytes by settingsViewModel.cacheBytes.collectAsState()
+                        val backupBusy by settingsViewModel.backupBusy.collectAsState()
+                        val backupOutcome by settingsViewModel.backupOutcome.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             SettingsScreen(
                                 onBack = { navController.popBackStack() },
@@ -519,7 +521,12 @@ fun AppRoot(
                                 onClearCache = settingsViewModel::clearCache,
                                 onClearDownloads = settingsViewModel::removeAllDownloads,
                                 onClearSearchHistory = searchViewModel::clearHistory,
-                                onClearPlayHistory = libraryViewModel::clearPlayHistory
+                                onClearPlayHistory = libraryViewModel::clearPlayHistory,
+                                backupBusy = backupBusy,
+                                backupOutcome = backupOutcome,
+                                onExportBackup = settingsViewModel::exportBackup,
+                                onImportBackup = settingsViewModel::importBackup,
+                                onDismissBackupOutcome = settingsViewModel::dismissBackupOutcome
                             )
                         }
                     }

@@ -17,3 +17,17 @@ fun Song.isAlbumEntry(): Boolean = url.startsWith(ALBUM_ENTRY_PREFIX)
 /** Rujukan album untuk membuka halaman album; tracklist-nya dicari dari judul + artis. */
 fun Song.toAlbumRef(): ArtistAlbum =
     ArtistAlbum(title = title, artist = artist, coverUrl = thumbnailUrl, url = "")
+
+private val NON_ALNUM = Regex("[^\\p{L}\\p{N}]+")
+
+/**
+ * Kunci identitas lagu: judul + artis, tanpa beda huruf besar/kecil, tanda baca, atau " - Topic".
+ * URL lagu yang sama bisa beda tergantung sumbernya (Pilihan Cepat, album, atau pencarian),
+ * jadi lagu dikenali dari judul + artisnya.
+ */
+fun Song.identityKey(): String {
+    fun norm(s: String) = s.lowercase()
+        .removeSuffix("- topic")
+        .replace(NON_ALNUM, "")
+    return norm(title) + "|" + norm(artist)
+}

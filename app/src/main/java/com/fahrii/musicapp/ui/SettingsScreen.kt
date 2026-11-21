@@ -7,6 +7,8 @@ import android.net.Uri
 import android.provider.Settings
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -54,8 +56,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import com.fahrii.musicapp.data.AudioQuality
+import com.fahrii.musicapp.data.BackupOutcome
+import com.fahrii.musicapp.data.ImportReport
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlinx.coroutines.delay
+import java.time.LocalDate
 import kotlin.math.roundToInt
 
 /** Data yang bisa dihapus dari halaman Pengaturan; menentukan teks dialog konfirmasinya. */
@@ -134,6 +139,11 @@ fun SettingsScreen(
     onClearDownloads: () -> Unit,
     onClearSearchHistory: () -> Unit,
     onClearPlayHistory: () -> Unit,
+    backupBusy: Boolean,
+    backupOutcome: BackupOutcome?,
+    onExportBackup: (Uri) -> Unit,
+    onImportBackup: (Uri) -> Unit,
+    onDismissBackupOutcome: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -141,6 +151,14 @@ fun SettingsScreen(
     var qualityDialog by remember { mutableStateOf<QualityTarget?>(null) }
     var showSleepDialog by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
+
+    // Pemilih berkas bawaan sistem: tidak butuh izin penyimpanan
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) onExportBackup(uri) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) onImportBackup(uri) }
 
     // Sisa waktu timer tidur, diperbarui tiap 15 detik selama halaman terbuka
     val nowMs by produceState(System.currentTimeMillis(), sleepTimerEndAt) {
@@ -339,6 +357,28 @@ fun SettingsScreen(
                 )
             }
 
+            SettingsSection(title = "Cadangan Data") {
+                SettingsItem(
+                    icon = AppIcons.Share,
+                    title = "Ekspor cadangan",
+                    subtitle = if (backupBusy) "Memproses…"
+                    else "Simpan favorit, playlist, riwayat, dan Replay ke satu berkas",
+                    onClick = {
+                        if (!backupBusy) exportLauncher.launch("SonoraMusic-backup-${LocalDate.now()}.json")
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Download,
+                    title = "Impor cadangan",
+                    subtitle = if (backupBusy) "Memproses…"
+                    else "Gabungkan dari berkas cadangan. Data yang sudah ada tidak diimpor lagi",
+                    onClick = {
+                        if (!backupBusy) importLauncher.launch(arrayOf("*/*"))
+                    }
+                )
+            }
+
             SettingsSection(title = "Notifikasi") {
                 SettingsItem(
                     icon = AppIcons.MusicNote,
@@ -391,6 +431,20 @@ fun SettingsScreen(
             // Supaya item terakhir tidak tertutup mini player dan navbar yang mengambang
             Spacer(Modifier.height(LocalBottomInset.current + 24.dp))
         }
+    }
+
+    backupOutcome?.let { outcome ->
+        val (title, message) = backupDialogText(outcome)
+        AlertDialog(
+            onDismissRequest = onDismissBackupOutcome,
+            title = { Text(title) },
+            text = {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    Text(text = message, fontSize = 14.sp, lineHeight = 20.sp)
+                }
+            },
+            confirmButton = { TextButton(onClick = onDismissBackupOutcome) { Text("OK") } }
+        )
     }
 
     if (showSleepDialog) {
@@ -538,6 +592,66 @@ fun SettingsScreen(
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Batal") } }
         )
     }
+}
+
+/** Judul dan isi dialog hasil ekspor/impor cadangan. */
+private fun backupDialogText(outcome: BackupOutcome): Pair<String, String> = when (outcome) {
+    is BackupOutcome.Failed -> "Cadangan gagal" to outcome.message
+    is BackupOutcome.Exported -> {
+        val s = outcome.summary
+        "Cadangan tersimpan" to ("Yang dicadangkan:\n" +
+                "• ${s.liked} lagu favorit\n" +
+                "• ${s.playlists} playlist\n" +
+                "• ${s.historySongs} lagu di riwayat putar\n" +
+                "• ${s.replayMonths} bulan statistik Replay\n\n" +
+                "Lagu yang sudah diunduh tidak ikut dicadangkan.")
+    }
+    is BackupOutcome.Imported -> importDialogText(outcome.report)
+}
+
+/**
+ * Ringkasan impor. Kalau semua isi berkas sudah ada di aplikasi, pengguna diberi tahu bahwa
+ * tidak ada yang diimpor lagi; kalau sebagian, dipisah antara yang baru masuk dan yang dilewati.
+ */
+private fun importDialogText(r: ImportReport): Pair<String, String> {
+    val existing = buildList {
+        if (r.liked.existing > 0) add("${r.liked.existing} lagu favorit")
+        if (r.playlists.existing > 0) add("${r.playlists.existing} playlist")
+        if (r.playlistSongs.existing > 0) add("${r.playlistSongs.existing} lagu di dalam playlist")
+        if (r.history.existing > 0) add("${r.history.existing} lagu di riwayat putar")
+        if (r.replay.existing > 0) add("${r.replay.existing} data Replay")
+    }
+    val existingBlock = existing.joinToString("\n") { "• $it" }
+
+    if (!r.hasNewData) {
+        val body = if (existing.isEmpty()) {
+            "Berkas ini tidak berisi data."
+        } else {
+            "Berkas ini tidak berisi data baru, jadi tidak ada yang diimpor lagi.\n\n" +
+                    "Sudah ada di aplikasi:\n$existingBlock"
+        }
+        return "Semua data sudah ada" to body
+    }
+
+    val added = buildList {
+        if (r.liked.added > 0) add("${r.liked.added} lagu favorit")
+        if (r.playlists.added > 0) add("${r.playlists.added} playlist")
+        if (r.playlistSongs.added > 0) add("${r.playlistSongs.added} lagu di dalam playlist")
+        if (r.history.added > 0) add("${r.history.added} lagu di riwayat putar")
+        if (r.replay.added > 0) add("${r.replay.added} data Replay")
+        if (r.playlists.updated > 0) add("${r.playlists.updated} cover playlist")
+        val stats = r.history.updated + r.replay.updated
+        if (stats > 0) add("$stats angka statistik diperbarui (di cadangan lebih besar)")
+    }
+    val body = buildString {
+        append("Ditambahkan:\n")
+        append(added.joinToString("\n") { "• $it" })
+        if (existing.isNotEmpty()) {
+            append("\n\nDilewati karena sudah ada:\n")
+            append(existingBlock)
+        }
+    }
+    return "Impor selesai" to body
 }
 
 /** Buka halaman pengaturan notifikasi aplikasi ini di pengaturan sistem. */

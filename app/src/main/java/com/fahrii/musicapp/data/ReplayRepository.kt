@@ -118,6 +118,15 @@ class ReplayRepository private constructor(context: Context) {
         }
     }
 
+    /** Gabungkan statistik dari berkas cadangan tanpa menggandakan angka (lihat [mergeReplay]). */
+    fun mergeBackup(incoming: Map<String, MonthStats>): SectionReport {
+        flush()
+        var merged: Merged<Map<String, MonthStats>>? = null
+        _stats.update { current -> mergeReplay(current, incoming).also { merged = it }.value }
+        saveNow()
+        return merged!!.report
+    }
+
     private fun bump(song: Song, plays: Int, ms: Long) {
         val key = currentKey()
         _stats.update { all ->

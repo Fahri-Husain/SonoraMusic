@@ -80,6 +80,18 @@ class HistoryRepository private constructor(context: Context) {
         persistSongs()
     }
 
+    /** Gabungkan riwayat dari berkas cadangan tanpa membuat entri ganda (lihat [mergeHistorySongs]). */
+    fun mergeBackup(songs: List<PlayedSong>, artists: List<ArtistStat>): SectionReport {
+        var merged: Merged<List<PlayedSong>>? = null
+        _songs.update { current ->
+            mergeHistorySongs(current, songs, MAX_SONGS).also { merged = it }.value
+        }
+        persistSongs()
+        _artists.update { current -> mergeArtistStats(current, artists) }
+        persist()
+        return merged!!.report
+    }
+
     private fun recordArtist(song: Song) {
         val name = song.artist.trim()
         if (name.isEmpty() || name == "Unknown artist") return
@@ -187,15 +199,8 @@ class HistoryRepository private constructor(context: Context) {
     companion object {
         private const val MAX_SONGS = 200
 
-        private val NON_ALNUM = Regex("[^\\p{L}\\p{N}]+")
-
-        /** Kunci identitas lagu: judul + artis, tanpa beda huruf besar/kecil, tanda baca, atau " - Topic". */
-        private fun songKey(song: Song): String {
-            fun norm(s: String) = s.lowercase()
-                .removeSuffix("- topic")
-                .replace(NON_ALNUM, "")
-            return norm(song.title) + "|" + norm(song.artist)
-        }
+        /** Kunci identitas lagu: lihat [identityKey]. */
+        private fun songKey(song: Song): String = song.identityKey()
 
         @Volatile
         private var instance: HistoryRepository? = null

@@ -183,6 +183,43 @@ class LibraryRepository private constructor(private val context: Context) {
         persist()
     }
 
+    /**
+     * Gabungkan Favorit dan playlist dari berkas cadangan. Yang sudah ada dilewati, hanya yang
+     * belum ada yang ditambahkan (lihat [mergeLibrary]). Cover playlist ikut dipulihkan.
+     */
+    fun mergeBackup(
+        liked: List<Song>,
+        playlists: List<BackupPlaylist>,
+        quickPlaylistId: String?
+    ): ImportReport {
+        var merge: LibraryMerge? = null
+        val now = System.currentTimeMillis()
+        _state.update { current ->
+            mergeLibrary(current, liked, playlists, quickPlaylistId, now).also { merge = it }.state
+        }
+        val result = merge!!
+        persist()
+
+        if (result.covers.isNotEmpty()) {
+            coversDir.mkdirs()
+            for ((id, bytes) in result.covers) {
+                val out = File(coversDir, "${id}_${System.currentTimeMillis()}.jpg")
+                if (runCatching { out.writeBytes(bytes) }.isFailure) continue
+                _state.update { s ->
+                    s.copy(playlists = s.playlists.map { p ->
+                        if (p.id == id && p.thumbnailPath == null) p.copy(thumbnailPath = out.absolutePath) else p
+                    })
+                }
+            }
+            persist()
+        }
+        return ImportReport(
+            liked = result.liked,
+            playlists = result.playlists,
+            playlistSongs = result.playlistSongs
+        )
+    }
+
     // Simpan selalu pakai state terbaru, bergantian lewat mutex supaya nggak saling timpa
     private fun persist() {
         scope.launch {
@@ -238,7 +275,7 @@ class LibraryRepository private constructor(private val context: Context) {
     }
 }
 
-private fun Song.toJson(): JSONObject = JSONObject().apply {
+internal fun Song.toJson(): JSONObject = JSONObject().apply {
     put("url", url)
     put("title", title)
     put("artist", artist)
@@ -246,7 +283,7 @@ private fun Song.toJson(): JSONObject = JSONObject().apply {
     put("durationSeconds", durationSeconds)
 }
 
-private fun JSONObject.toSong() = Song(
+internal fun JSONObject.toSong() = Song(
     url = getString("url"),
     title = getString("title"),
     artist = getString("artist"),
