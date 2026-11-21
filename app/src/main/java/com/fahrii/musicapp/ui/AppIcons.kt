@@ -92,6 +92,7 @@ object AppIcons {
     val Edit: ImageVector = PhosphorIcons.Fill.Pencil
     val EditImage: ImageVector = PhosphorIcons.Fill.ImageSquare
     val Queue: ImageVector = CustomIcons.Playlist
+    val Caption: ImageVector = CustomIcons.Caption
     val Sync: ImageVector = PhosphorIcons.Fill.ArrowsClockwise
     val Refresh: ImageVector = PhosphorIcons.Fill.ClockClockwise
     val DeleteFilled: ImageVector = PhosphorIcons.Fill.TrashFill

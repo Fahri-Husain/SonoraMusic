@@ -490,6 +490,10 @@ fun AppRoot(
                         val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
                         val pauseOnUnplug by settingsViewModel.pauseOnUnplug.collectAsState()
+                        val shakeToSkip by settingsViewModel.shakeToSkip.collectAsState()
+                        val doubleTapLike by settingsViewModel.doubleTapLike.collectAsState()
+                        val lyricsFontSize by settingsViewModel.lyricsFontSize.collectAsState()
+                        val lyricsBlur by settingsViewModel.lyricsBlur.collectAsState()
                         val sleepTimerEndAt by settingsViewModel.sleepTimerEndAt.collectAsState()
                         val downloadWifiOnly by settingsViewModel.downloadWifiOnly.collectAsState()
                         val downloadedSongs by settingsViewModel.downloaded.collectAsState()
@@ -511,6 +515,14 @@ fun AppRoot(
                                 onSkipSilenceChange = settingsViewModel::setSkipSilence,
                                 pauseOnUnplug = pauseOnUnplug,
                                 onPauseOnUnplugChange = settingsViewModel::setPauseOnUnplug,
+                                shakeToSkip = shakeToSkip,
+                                onShakeToSkipChange = settingsViewModel::setShakeToSkip,
+                                doubleTapLike = doubleTapLike,
+                                onDoubleTapLikeChange = settingsViewModel::setDoubleTapLike,
+                                lyricsFontSize = lyricsFontSize,
+                                onLyricsFontSizeChange = settingsViewModel::setLyricsFontSize,
+                                lyricsBlur = lyricsBlur,
+                                onLyricsBlurChange = settingsViewModel::setLyricsBlur,
                                 sleepTimerEndAt = sleepTimerEndAt,
                                 onSleepTimerSet = settingsViewModel::setSleepTimer,
                                 downloadWifiOnly = downloadWifiOnly,

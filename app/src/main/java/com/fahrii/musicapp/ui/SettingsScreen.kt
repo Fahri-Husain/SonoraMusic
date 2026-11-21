@@ -58,6 +58,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.fahrii.musicapp.data.AudioQuality
 import com.fahrii.musicapp.data.BackupOutcome
 import com.fahrii.musicapp.data.ImportReport
+import com.fahrii.musicapp.data.LyricsFontSize
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlinx.coroutines.delay
 import java.time.LocalDate
@@ -128,6 +129,14 @@ fun SettingsScreen(
     onSkipSilenceChange: (Boolean) -> Unit,
     pauseOnUnplug: Boolean,
     onPauseOnUnplugChange: (Boolean) -> Unit,
+    shakeToSkip: Boolean,
+    onShakeToSkipChange: (Boolean) -> Unit,
+    doubleTapLike: Boolean,
+    onDoubleTapLikeChange: (Boolean) -> Unit,
+    lyricsFontSize: LyricsFontSize,
+    onLyricsFontSizeChange: (LyricsFontSize) -> Unit,
+    lyricsBlur: Boolean,
+    onLyricsBlurChange: (Boolean) -> Unit,
     sleepTimerEndAt: Long,
     onSleepTimerSet: (Int) -> Unit,
     downloadWifiOnly: Boolean,
@@ -150,6 +159,7 @@ fun SettingsScreen(
     var confirm by remember { mutableStateOf<ClearTarget?>(null) }
     var qualityDialog by remember { mutableStateOf<QualityTarget?>(null) }
     var showSleepDialog by remember { mutableStateOf(false) }
+    var showLyricsSizeDialog by remember { mutableStateOf(false) }
     var showLicenses by remember { mutableStateOf(false) }
 
     // Pemilih berkas bawaan sistem: tidak butuh izin penyimpanan
@@ -267,6 +277,52 @@ fun SettingsScreen(
                         Switch(
                             checked = pauseOnUnplug,
                             onCheckedChange = onPauseOnUnplugChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Next,
+                    title = "Goyang untuk ganti lagu",
+                    subtitle = "Goyangkan ponsel untuk lompat ke lagu berikutnya (saat aplikasi terbuka)",
+                    trailing = {
+                        Switch(
+                            checked = shakeToSkip,
+                            onCheckedChange = onShakeToSkipChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.HeartFilled,
+                    title = "Ketuk dua kali untuk favorit",
+                    subtitle = "Ketuk dua kali cover di halaman Sedang Diputar untuk menyukai atau membatalkan suka",
+                    trailing = {
+                        Switch(
+                            checked = doubleTapLike,
+                            onCheckedChange = onDoubleTapLikeChange,
+                            colors = sonoraSwitchColors()
+                        )
+                    }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Caption,
+                    title = "Ukuran lirik",
+                    subtitle = lyricsFontSize.label,
+                    onClick = { showLyricsSizeDialog = true }
+                )
+                SettingsDivider()
+                SettingsItem(
+                    icon = AppIcons.Album,
+                    title = "Blur lirik",
+                    subtitle = "Baris yang jauh dari baris aktif jadi buram, seperti Apple Music (Android 12 ke atas)",
+                    trailing = {
+                        Switch(
+                            checked = lyricsBlur,
+                            onCheckedChange = onLyricsBlurChange,
                             colors = sonoraSwitchColors()
                         )
                     }
@@ -570,6 +626,43 @@ fun SettingsScreen(
             },
             confirmButton = {},
             dismissButton = { TextButton(onClick = { qualityDialog = null }) { Text("Tutup") } }
+        )
+    }
+
+    if (showLyricsSizeDialog) {
+        AlertDialog(
+            onDismissRequest = { showLyricsSizeDialog = false },
+            title = { Text("Ukuran lirik") },
+            text = {
+                Column {
+                    LyricsFontSize.entries.forEach { option ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    onLyricsFontSizeChange(option)
+                                    showLyricsSizeDialog = false
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = option == lyricsFontSize, onClick = null)
+                            Spacer(Modifier.width(12.dp))
+                            Text(text = option.label, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                    Text(
+                        text = "Berlaku di layar lirik penuh.",
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = Sonora.TextSecondary,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showLyricsSizeDialog = false }) { Text("Tutup") } }
         )
     }
 

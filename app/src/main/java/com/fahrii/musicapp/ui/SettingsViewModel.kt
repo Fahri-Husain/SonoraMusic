@@ -11,6 +11,7 @@ import com.fahrii.musicapp.data.BackupManager
 import com.fahrii.musicapp.data.BackupOutcome
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.DownloadedSong
+import com.fahrii.musicapp.data.LyricsFontSize
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +34,10 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val skipSilence: StateFlow<Boolean> = repo.skipSilence
     val pauseOnUnplug: StateFlow<Boolean> = repo.pauseOnUnplug
     val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
+    val shakeToSkip: StateFlow<Boolean> = repo.shakeToSkip
+    val doubleTapLike: StateFlow<Boolean> = repo.doubleTapLike
+    val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
+    val lyricsBlur: StateFlow<Boolean> = repo.lyricsBlur
     val sleepTimerEndAt: StateFlow<Long> = repo.sleepTimerEndAt
 
     /** Lagu yang sudah diunduh; jumlah dan ukurannya ditampilkan di bagian Unduhan dan Penyimpanan. */
@@ -65,6 +70,14 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setPauseOnUnplug(enabled: Boolean) = repo.setPauseOnUnplug(enabled)
 
     fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
+
+    fun setShakeToSkip(enabled: Boolean) = repo.setShakeToSkip(enabled)
+
+    fun setDoubleTapLike(enabled: Boolean) = repo.setDoubleTapLike(enabled)
+
+    fun setLyricsFontSize(size: LyricsFontSize) = repo.setLyricsFontSize(size)
+
+    fun setLyricsBlur(enabled: Boolean) = repo.setLyricsBlur(enabled)
 
     fun setCrossfadeEnabled(enabled: Boolean) = repo.setCrossfadeEnabled(enabled)
 

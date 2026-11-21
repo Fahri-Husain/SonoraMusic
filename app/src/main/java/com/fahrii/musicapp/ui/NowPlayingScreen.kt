@@ -25,6 +25,9 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -80,6 +83,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
@@ -90,19 +94,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.sp
@@ -112,7 +125,9 @@ import com.fahrii.musicapp.data.LyricLine
 import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.LyricsRepository
 import com.fahrii.musicapp.data.MusicRepository
+import com.fahrii.musicapp.data.SettingsRepository
 import com.fahrii.musicapp.data.Song
+import kotlinx.coroutines.delay
 import kotlin.math.sin
 import kotlin.math.cos
 import kotlin.math.asin
@@ -150,6 +165,8 @@ fun NowPlayingScreen(
     }
 
     val isLiked = library.liked.any { it.url == song.url }
+    val doubleTapLikeEnabled by SettingsRepository.getInstance(LocalContext.current)
+        .doubleTapLike.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
@@ -438,6 +455,14 @@ fun NowPlayingScreen(
                 val spacingPx = sidePx + with(LocalDensity.current) { 24.dp.toPx() }
                 var coverDragX by remember { mutableFloatStateOf(0f) }
                 var committedFromUrl by remember { mutableStateOf<String?>(null) }
+
+                // Ketuk dua kali cover = suka. Nilai terbaru dibaca lewat rememberUpdatedState karena
+                // pointerInput(Unit) tidak dibuat ulang saat lagu atau pengaturan berubah.
+                val currentSong by rememberUpdatedState(song)
+                val currentIsLiked by rememberUpdatedState(isLiked)
+                val currentDoubleTapEnabled by rememberUpdatedState(doubleTapLikeEnabled)
+                val haptic = LocalHapticFeedback.current
+                var heartBurst by remember { mutableStateOf(HeartBurst()) }
                 var swipeCommitting by remember { mutableStateOf(false) }
 
                 // Setelah lagu berganti lewat geseran, cover baru sudah tepat di tengah: reset posisi geser
@@ -453,6 +478,17 @@ fun NowPlayingScreen(
                 Box(
                     modifier = Modifier
                         .size(side)
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = {
+                                if (!currentDoubleTapEnabled) return@detectTapGestures
+                                // Belum disukai -> jadi favorit (hati utuh); sudah disukai -> batal
+                                // favorit (hati retak terbelah dua)
+                                val willLike = !currentIsLiked
+                                libraryViewModel.toggleLike(currentSong)
+                                heartBurst = HeartBurst(id = heartBurst.id + 1, liked = willLike)
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            })
+                        }
                         .draggable(
                             orientation = Orientation.Horizontal,
                             state = rememberDraggableState { delta ->
@@ -623,6 +659,8 @@ fun NowPlayingScreen(
                         }
                     }
                 }
+                // Hati yang muncul di tengah cover setelah diketuk dua kali
+                DoubleTapHeartBurst(burst = heartBurst, modifier = Modifier.size(side))
             }
 
             // Judul dan artis: yang lama memudar sambil naik sedikit, yang baru muncul dari bawah
@@ -981,6 +1019,8 @@ private fun FullLyricsScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val current = lines.indexOfLast { it.timeMs <= positionMs }
+    val lyricsFont by SettingsRepository.getInstance(context).lyricsFontSize.collectAsState()
+    val lyricsBlurOn by SettingsRepository.getInstance(context).lyricsBlur.collectAsState()
 
     var selecting by remember { mutableStateOf(false) }
     // Pilihan selalu satu rentang baris berurutan (selStart..selEnd), -1 = belum ada
@@ -1190,14 +1230,38 @@ private fun FullLyricsScreen(
                         animationSpec = tween(300),
                         label = "lyricColor"
                     )
+                    // Baris yang sedang dinyanyikan membesar sedikit (bukan saat memilih baris untuk kartu)
+                    val lineScale by animateFloatAsState(
+                        targetValue = if (highlighted && !selecting) 1.05f else 1f,
+                        animationSpec = tween(300),
+                        label = "lyricScale"
+                    )
+                    // Gaya Apple Music: makin jauh dari baris aktif makin buram (maksimal 6 dp).
+                    // Mati saat memilih baris untuk kartu supaya teks tetap jelas. Efek blur hanya
+                    // terlihat di Android 12 ke atas; di versi lebih lama diabaikan sistem.
+                    val blurRadius by animateDpAsState(
+                        targetValue = if (lyricsBlurOn && !selecting && current >= 0) {
+                            (minOf(abs(index - current), 3) * 2).dp
+                        } else {
+                            0.dp
+                        },
+                        animationSpec = tween(300),
+                        label = "lyricBlur"
+                    )
                     Text(
                         text = line.text.ifBlank { "♪" },
-                        fontSize = 26.sp,
-                        lineHeight = 32.sp,
+                        fontSize = lyricsFont.textSp.sp,
+                        lineHeight = lyricsFont.lineHeightSp.sp,
                         fontWeight = FontWeight.Bold,
                         color = color,
                         modifier = Modifier
                             .fillMaxWidth()
+                            .graphicsLayer {
+                                scaleX = lineScale
+                                scaleY = lineScale
+                                transformOrigin = TransformOrigin(0f, 0.5f)
+                            }
+                            .blur(blurRadius, BlurredEdgeTreatment.Unbounded)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -1524,4 +1588,102 @@ private fun SwipeCoverPeek(
             .background(Sonora.SurfaceHigh)
             .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
     )
+}
+
+/** Satu kali animasi ketuk dua kali: [id] naik tiap ketukan (0 = belum pernah), [liked] = jadi favorit atau batal. */
+private data class HeartBurst(val id: Int = 0, val liked: Boolean = true)
+
+/**
+ * Umpan balik ketuk dua kali di tengah cover. Jadi favorit: hati utuh membesar lalu memudar.
+ * Batal favorit: hati membesar, lalu retak di tengah dan kedua belahannya terbuka dan jatuh sambil memudar.
+ */
+@Composable
+private fun DoubleTapHeartBurst(burst: HeartBurst, modifier: Modifier = Modifier) {
+    val heartScale = remember { Animatable(0f) }
+    val heartAlpha = remember { Animatable(0f) }
+    val split = remember { Animatable(0f) }
+    // Jenis hati dikunci saat animasi mulai, supaya tidak berubah di tengah jalan
+    var shownLiked by remember { mutableStateOf(true) }
+    val leftShape = remember { HeartHalfShape(isLeft = true) }
+    val rightShape = remember { HeartHalfShape(isLeft = false) }
+
+    LaunchedEffect(burst.id) {
+        if (burst.id == 0) return@LaunchedEffect
+        shownLiked = burst.liked
+        split.snapTo(0f)
+        heartScale.snapTo(0.4f)
+        heartAlpha.snapTo(1f)
+        heartScale.animateTo(1.15f, tween(160, easing = FastOutSlowInEasing))
+        if (burst.liked) {
+            delay(240)
+            heartAlpha.animateTo(0f, tween(240, easing = FastOutSlowInEasing))
+        } else {
+            delay(160)
+            launch { split.animateTo(1f, tween(450, easing = FastOutSlowInEasing)) }
+            delay(200)
+            heartAlpha.animateTo(0f, tween(250, easing = FastOutSlowInEasing))
+        }
+    }
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        if (heartAlpha.value > 0f) {
+            if (shownLiked) {
+                Icon(
+                    imageVector = AppIcons.HeartFilled,
+                    contentDescription = null,
+                    tint = HeartColor,
+                    modifier = Modifier
+                        .size(96.dp)
+                        .graphicsLayer {
+                            scaleX = heartScale.value
+                            scaleY = heartScale.value
+                            alpha = heartAlpha.value
+                        }
+                )
+            } else {
+                // Dua salinan hati, masing-masing dipotong separuh dengan tepi bergerigi (retakan),
+                // lalu diputar dari ujung bawah hati sehingga retakan membuka ke atas
+                listOf(leftShape to -1f, rightShape to 1f).forEach { (halfShape, dir) ->
+                    Icon(
+                        imageVector = AppIcons.HeartFilled,
+                        contentDescription = null,
+                        tint = HeartColor,
+                        modifier = Modifier
+                            .size(96.dp)
+                            .graphicsLayer {
+                                val t = split.value
+                                scaleX = heartScale.value
+                                scaleY = heartScale.value
+                                alpha = heartAlpha.value
+                                transformOrigin = TransformOrigin(0.5f, 1f)
+                                rotationZ = dir * 20f * t
+                                translationX = dir * 20.dp.toPx() * t
+                                translationY = 28.dp.toPx() * t * t
+                                shape = halfShape
+                                clip = true
+                            }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Separuh kiri atau kanan sebuah kotak, dengan tepi tengah bergerigi seperti retakan. */
+private class HeartHalfShape(private val isLeft: Boolean) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        // Pergeseran retakan dari garis tengah (pecahan lebar) di tiap ketinggian (pecahan tinggi)
+        val ys = floatArrayOf(0f, 0.2f, 0.38f, 0.56f, 0.74f, 0.9f, 1f)
+        val dx = floatArrayOf(0f, 0.05f, -0.05f, 0.06f, -0.04f, 0.04f, 0f)
+        val path = Path().apply {
+            moveTo(if (isLeft) 0f else w, 0f)
+            for (i in ys.indices) lineTo(cx + dx[i] * w, ys[i] * h)
+            lineTo(if (isLeft) 0f else w, h)
+            close()
+        }
+        return Outline.Generic(path)
+    }
 }

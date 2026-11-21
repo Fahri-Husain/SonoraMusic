@@ -12,6 +12,13 @@ enum class AudioQuality(val label: String, val description: String) {
     HIGH("Tinggi", "Kualitas terbaik yang tersedia")
 }
 
+/** Ukuran teks lirik di layar lirik penuh. [textSp] dan [lineHeightSp] dalam satuan sp. */
+enum class LyricsFontSize(val label: String, val textSp: Int, val lineHeightSp: Int) {
+    SMALL("Kecil", 22, 28),
+    MEDIUM("Sedang", 26, 32),
+    LARGE("Besar", 30, 38)
+}
+
 /**
  * Pengaturan aplikasi (disimpan di SharedPreferences). Dipakai bersama oleh UI dan PlaybackService,
  * yang berjalan di proses yang sama, jadi perubahan dari halaman Pengaturan langsung terbaca pemutar.
@@ -51,6 +58,25 @@ class SettingsRepository private constructor(context: Context) {
     /** Unduhan baru hanya boleh jalan lewat Wi-Fi (bukan data seluler). Bawaan: mati. */
     val downloadWifiOnly: StateFlow<Boolean> = _downloadWifiOnly.asStateFlow()
 
+    private val _shakeToSkip = MutableStateFlow(prefs.getBoolean(KEY_SHAKE_TO_SKIP, false))
+    /** Goyang ponsel untuk lagu berikutnya (hanya saat aplikasi terbuka). Bawaan: mati. */
+    val shakeToSkip: StateFlow<Boolean> = _shakeToSkip.asStateFlow()
+
+    private val _doubleTapLike = MutableStateFlow(prefs.getBoolean(KEY_DOUBLE_TAP_LIKE, true))
+    /** Ketuk dua kali pada cover di halaman Sedang Diputar untuk menyukai lagu. Bawaan: nyala. */
+    val doubleTapLike: StateFlow<Boolean> = _doubleTapLike.asStateFlow()
+
+    private val _lyricsFontSize = MutableStateFlow(
+        runCatching { LyricsFontSize.valueOf(prefs.getString(KEY_LYRICS_FONT_SIZE, null) ?: "") }
+            .getOrDefault(LyricsFontSize.MEDIUM)
+    )
+    /** Ukuran teks di layar lirik penuh. Bawaan: sedang (sama dengan tampilan sebelumnya). */
+    val lyricsFontSize: StateFlow<LyricsFontSize> = _lyricsFontSize.asStateFlow()
+
+    private val _lyricsBlur = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_BLUR, true))
+    /** Baris lirik yang jauh dari baris aktif diburamkan (gaya Apple Music). Bawaan: nyala. */
+    val lyricsBlur: StateFlow<Boolean> = _lyricsBlur.asStateFlow()
+
     private val _sleepTimerEndAt = MutableStateFlow(0L)
     /**
      * Kapan timer tidur habis (epoch ms); 0 = timer mati. Sengaja tidak disimpan ke SharedPreferences:
@@ -85,6 +111,26 @@ class SettingsRepository private constructor(context: Context) {
     fun setDownloadWifiOnly(enabled: Boolean) {
         _downloadWifiOnly.value = enabled
         prefs.edit().putBoolean(KEY_DOWNLOAD_WIFI_ONLY, enabled).apply()
+    }
+
+    fun setShakeToSkip(enabled: Boolean) {
+        _shakeToSkip.value = enabled
+        prefs.edit().putBoolean(KEY_SHAKE_TO_SKIP, enabled).apply()
+    }
+
+    fun setDoubleTapLike(enabled: Boolean) {
+        _doubleTapLike.value = enabled
+        prefs.edit().putBoolean(KEY_DOUBLE_TAP_LIKE, enabled).apply()
+    }
+
+    fun setLyricsFontSize(size: LyricsFontSize) {
+        _lyricsFontSize.value = size
+        prefs.edit().putString(KEY_LYRICS_FONT_SIZE, size.name).apply()
+    }
+
+    fun setLyricsBlur(enabled: Boolean) {
+        _lyricsBlur.value = enabled
+        prefs.edit().putBoolean(KEY_LYRICS_BLUR, enabled).apply()
     }
 
     /** Nyalakan timer tidur [minutes] menit dari sekarang. */
@@ -124,6 +170,10 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_SKIP_SILENCE = "skip_silence"
         private const val KEY_PAUSE_ON_UNPLUG = "pause_on_unplug"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
+        private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
+        private const val KEY_DOUBLE_TAP_LIKE = "double_tap_like"
+        private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"
+        private const val KEY_LYRICS_BLUR = "lyrics_blur"
 
         @Volatile
         private var instance: SettingsRepository? = null
