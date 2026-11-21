@@ -185,6 +185,8 @@ class CrossfadeManager(
         handler.removeCallbacksAndMessages(null)
         player.removeListener(listener)
         phase = Phase.IDLE
+        // Service dilepas di tengah fade: jangan tinggalkan UI dengan label dan warna yang menyala terus
+        CrossfadeState.setCrossfading(false)
         endDjFilters()
         releaseTail()
     }
@@ -470,6 +472,7 @@ class CrossfadeManager(
     private fun abortSync(reason: String) {
         Log.d(TAG, "crossfade dibatalkan, lagu pindah biasa: $reason")
         phase = Phase.IDLE
+        CrossfadeState.setCrossfading(false)
         player.volume = 1f
         endDjFilters()
         releaseTail()
@@ -505,6 +508,7 @@ class CrossfadeManager(
         }
 
         phase = Phase.FADING
+        CrossfadeState.setCrossfading(true)
         // Panjang fade sesuai pengaturan (tidak lebih panjang walau sinkronisasi dimulai lebih awal)
         fadeDurationMs = remaining.coerceAtMost(currentFadeMs.coerceAtLeast(MIN_REMAINING_MS))
         Log.d(TAG, "fade mulai: ${fadeDurationMs}ms (sisa lagu lama ${remaining}ms)")
@@ -569,6 +573,7 @@ class CrossfadeManager(
     private fun finishFade() {
         Log.d(TAG, "fade selesai")
         phase = Phase.IDLE
+        CrossfadeState.setCrossfading(false)
         endDjFilters()
         releaseTail()
         player.volume = 1f

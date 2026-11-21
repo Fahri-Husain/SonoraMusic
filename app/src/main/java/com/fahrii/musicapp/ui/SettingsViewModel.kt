@@ -28,6 +28,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     val crossfadeEnabled: StateFlow<Boolean> = repo.crossfadeEnabled
     val crossfadeSeconds: StateFlow<Int> = repo.crossfadeSeconds
+    val crossfadeDjMode: StateFlow<Boolean> = repo.crossfadeDjMode
 
     val streamQuality: StateFlow<AudioQuality> = repo.streamQuality
     val downloadQuality: StateFlow<AudioQuality> = repo.downloadQuality
@@ -82,6 +83,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setCrossfadeEnabled(enabled: Boolean) = repo.setCrossfadeEnabled(enabled)
 
     fun setCrossfadeSeconds(seconds: Int) = repo.setCrossfadeSeconds(seconds)
+
+    fun setCrossfadeDjMode(enabled: Boolean) = repo.setCrossfadeDjMode(enabled)
 
     /** [minutes] <= 0 mematikan timer tidur. */
     fun setSleepTimer(minutes: Int) {

@@ -60,6 +60,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -110,6 +111,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,6 +123,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.sp
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
+import com.fahrii.musicapp.CrossfadeState
 import com.fahrii.musicapp.data.LyricLine
 import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.LyricsRepository
@@ -154,6 +157,7 @@ fun NowPlayingScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val progress by viewModel.progress.collectAsState()
+    val isCrossfading by CrossfadeState.isCrossfading.collectAsState()
     val library by libraryViewModel.state.collectAsState()
     val song = state.currentSong
 
@@ -727,6 +731,7 @@ fun NowPlayingScreen(
 
             ProgressBar(
                 value = sliderValue,
+                crossfading = isCrossfading,
                 enabled = durationMs > 0,
                 onChange = {
                     if (!isDragging) dragDurationMs = durationMs
@@ -738,13 +743,12 @@ fun NowPlayingScreen(
                     isDragging = false
                 }
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(formatTime(shownPositionMs), fontSize = 12.sp, color = inactive)
-                Text("-" + formatTime(remainingMs), fontSize = 12.sp, color = inactive)
-            }
+            PlaybackTimeRow(
+                elapsed = formatTime(shownPositionMs),
+                remaining = "-" + formatTime(remainingMs),
+                crossfading = isCrossfading,
+                color = inactive
+            )
 
             Spacer(Modifier.height(20.dp))
 
@@ -857,6 +861,7 @@ fun NowPlayingScreen(
             ) {
                 ProgressBar(
                     value = sliderValue,
+                    crossfading = isCrossfading,
                     enabled = durationMs > 0,
                     onChange = {
                         if (!isDragging) dragDurationMs = durationMs
@@ -868,13 +873,12 @@ fun NowPlayingScreen(
                         isDragging = false
                     }
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(formatTime(shownPositionMs), fontSize = 12.sp, color = inactive)
-                    Text("-" + formatTime(remainingMs), fontSize = 12.sp, color = inactive)
-                }
+                PlaybackTimeRow(
+                    elapsed = formatTime(shownPositionMs),
+                    remaining = "-" + formatTime(remainingMs),
+                    crossfading = isCrossfading,
+                    color = inactive
+                )
                 Spacer(Modifier.height(12.dp))
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     PlainIconButton(
@@ -1458,6 +1462,44 @@ private fun LyricText(text: String, current: Boolean) {
     )
 }
 
+/**
+ * Baris waktu di bawah bar progres: waktu berjalan di kiri, sisa waktu di kanan, dan selama
+ * crossfade label "Crossfading" di tengah (posisi dan ukuran label sama dengan SimpMusic, 13sp).
+ *
+ * Tinggi barisnya dikunci dengan `heightIn(min)`: label 13sp sedikit lebih tinggi daripada teks
+ * waktu 12sp, dan tanpa ini seluruh kontrol di bawahnya bergeser saat label muncul/hilang.
+ */
+@Composable
+private fun PlaybackTimeRow(
+    elapsed: String,
+    remaining: String,
+    crossfading: Boolean,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = elapsed, fontSize = 12.sp, color = color, modifier = Modifier.weight(1f))
+        // Sisi kiri dan kanan sama-sama weight(1f), jadi label yang selebar isinya otomatis di tengah
+        CrossfadingLabel(
+            visible = crossfading,
+            style = TextStyle(fontSize = 13.sp),
+            baseColor = color
+        )
+        Text(
+            text = remaining,
+            fontSize = 12.sp,
+            color = color,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
 /** Bar progres tipis dengan bulatan kecil, bisa diketuk dan digeser. */
 @Composable
 private fun ProgressBar(
@@ -1465,8 +1507,11 @@ private fun ProgressBar(
     enabled: Boolean,
     onChange: (Float) -> Unit,
     onFinish: () -> Unit,
+    /** True selama crossfade: bagian yang sudah terputar dan bulatannya berganti warna pelangi. */
+    crossfading: Boolean = false,
     modifier: Modifier = Modifier
 ) {
+    val trackColor = rememberCrossfadeTrackColor(crossfading)
     val density = LocalDensity.current
     val thumb = 12.dp
     val thumbPx = with(density) { thumb.toPx() }
@@ -1510,14 +1555,14 @@ private fun ProgressBar(
                 .width(with(density) { (thumbPx / 2 + value * travelPx).toDp() })
                 .height(4.dp)
                 .clip(CircleShape)
-                .background(Color.White)
+                .background(trackColor)
         )
         Box(
             modifier = Modifier
                 .offset { IntOffset((value * travelPx).roundToInt(), 0) }
                 .size(thumb)
                 .clip(CircleShape)
-                .background(Color.White)
+                .background(trackColor)
         )
     }
 }
