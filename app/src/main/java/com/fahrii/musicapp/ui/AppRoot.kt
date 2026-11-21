@@ -486,6 +486,7 @@ fun AppRoot(
                         val settingsViewModel: SettingsViewModel = viewModel()
                         val crossfadeEnabled by settingsViewModel.crossfadeEnabled.collectAsState()
                         val crossfadeSeconds by settingsViewModel.crossfadeSeconds.collectAsState()
+                        val crossfadeDjMode by settingsViewModel.crossfadeDjMode.collectAsState()
                         val streamQuality by settingsViewModel.streamQuality.collectAsState()
                         val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
@@ -507,6 +508,8 @@ fun AppRoot(
                                 crossfadeSeconds = crossfadeSeconds,
                                 onCrossfadeEnabledChange = settingsViewModel::setCrossfadeEnabled,
                                 onCrossfadeSecondsChange = settingsViewModel::setCrossfadeSeconds,
+                                crossfadeDjMode = crossfadeDjMode,
+                                onCrossfadeDjModeChange = settingsViewModel::setCrossfadeDjMode,
                                 streamQuality = streamQuality,
                                 downloadQuality = downloadQuality,
                                 skipSilence = skipSilence,

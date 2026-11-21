@@ -38,6 +38,13 @@ class SettingsRepository private constructor(context: Context) {
     /** Lama crossfade (detik). Tetap tersimpan walau crossfade dimatikan. */
     val crossfadeSeconds: StateFlow<Int> = _crossfadeSeconds.asStateFlow()
 
+    private val _crossfadeDjMode = MutableStateFlow(prefs.getBoolean(KEY_CROSSFADE_DJ_MODE, true))
+    /**
+     * Transisi ala DJ: selama crossfade, lagu lama diredam (low-pass) dan lagu baru dibuka (high-pass).
+     * Bawaan: nyala, sama seperti SimpMusic. Hanya berlaku kalau crossfade menyala.
+     */
+    val crossfadeDjMode: StateFlow<Boolean> = _crossfadeDjMode.asStateFlow()
+
     private val _streamQuality = MutableStateFlow(readQuality(KEY_STREAM_QUALITY))
     /** Kualitas audio saat streaming. Berlaku mulai lagu yang diputar berikutnya. Bawaan: tinggi. */
     val streamQuality: StateFlow<AudioQuality> = _streamQuality.asStateFlow()
@@ -157,14 +164,24 @@ class SettingsRepository private constructor(context: Context) {
         prefs.edit().putInt(KEY_CROSSFADE_SECONDS, value).apply()
     }
 
+    /** Transisi ala DJ yang berlaku sekarang: nyala hanya kalau crossfade juga nyala. */
+    fun crossfadeDjMode(): Boolean = _crossfadeEnabled.value && _crossfadeDjMode.value
+
+    fun setCrossfadeDjMode(enabled: Boolean) {
+        _crossfadeDjMode.value = enabled
+        prefs.edit().putBoolean(KEY_CROSSFADE_DJ_MODE, enabled).apply()
+    }
+
     companion object {
         const val MIN_CROSSFADE_SECONDS = 1
-        const val MAX_CROSSFADE_SECONDS = 12
+        // Sama dengan pilihan terpanjang di SimpMusic (1 sampai 30 detik)
+        const val MAX_CROSSFADE_SECONDS = 30
         const val DEFAULT_CROSSFADE_SECONDS = 5
 
         private const val PREFS_NAME = "settings"
         private const val KEY_CROSSFADE_ENABLED = "crossfade_enabled"
         private const val KEY_CROSSFADE_SECONDS = "crossfade_seconds"
+        private const val KEY_CROSSFADE_DJ_MODE = "crossfade_dj_mode"
         private const val KEY_STREAM_QUALITY = "stream_quality"
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_SKIP_SILENCE = "skip_silence"

@@ -14,14 +14,24 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.fahrii.musicapp.audio.BiquadFilter
+import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
+import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.ln
 import kotlin.math.sin
 
 /**
- * Crossfade antar lagu. ExoPlayer tidak punya crossfade bawaan, jadi dipakai dua pemutar:
+ * Crossfade antar lagu dengan gaya SimpMusic: kurva equal-power (cos/sin), transisi ala DJ
+ * (filter low-pass untuk lagu lama, high-pass untuk lagu baru), dan lagu pendek dilewati.
+ * Aturan dan kurvanya diadaptasi dari `CrossfadeExoPlayerAdapter` SimpMusic (maxrave-dev/core,
+ * GPL-3.0). Mesin dua pemutar di bawah tetap milik SonoraMusic, karena antrean, sesi media, dan
+ * notifikasi di sini memakai satu ExoPlayer biasa, bukan pemutar-per-lagu seperti SimpMusic.
+ *
+ * ExoPlayer tidak punya crossfade bawaan, jadi dipakai dua pemutar:
  *
  * 1. Beberapa detik sebelum lagu habis, pemutar kedua ([tail]) disiapkan diam-diam untuk lagu
  *    yang sama, berhenti sedikit sebelum titik transisi.
@@ -32,20 +42,27 @@ import kotlin.math.sin
  *    Isinya sama, jadi tidak terdengar. Setelah itu pemutar utama senyap dan aman dipindah ke
  *    lagu berikutnya.
  * 4. FADING: [tail] meneruskan sisa lagu lama (volume turun), pemutar utama memutar lagu baru
- *    (volume naik). Kurvanya equal-power dengan ujung yang landai, jadi awal lagu baru tidak
- *    "muncul tiba-tiba". Setelah selesai, [tail] dibuang. Notifikasi, sesi media, dan antrean
- *    tetap hanya memakai pemutar utama.
+ *    (volume naik). Kurvanya equal-power: lagu lama cos(sudut), lagu baru sin(sudut), jadi tenaga
+ *    total rata sepanjang transisi. Kalau transisi ala DJ nyala, lagu lama lewat low-pass yang
+ *    turun dari 20 kHz ke 200 Hz dan lagu baru lewat high-pass yang turun dari 2 kHz ke 20 Hz,
+ *    mengikuti kurva sigmoid. Setelah selesai, [tail] dibuang dan filter dimatikan. Notifikasi,
+ *    sesi media, dan antrean tetap hanya memakai pemutar utama.
  *
  * Kalau syarat tidak terpenuhi (crossfade mati, ulang satu lagu, tidak ada lagu berikutnya, lagu
- * terlalu pendek, atau [tail] tidak siap/tidak sejajar pada waktunya), tidak ada yang dilakukan dan
- * lagu berganti seperti biasa. Semuanya berjalan di thread utama.
+ * lebih pendek dari 20 detik atau 3x lama crossfade, atau [tail] tidak siap/tidak sejajar pada
+ * waktunya), tidak ada yang dilakukan dan lagu berganti seperti biasa. Semuanya berjalan di
+ * thread utama.
+ *
+ * @param djFilter filter milik pemutar utama; harus sudah dipasang di rantai audio [player]
+ *   lewat [DjFilterRenderersFactory].
  */
 @OptIn(UnstableApi::class)
 class CrossfadeManager(
     private val context: Context,
     private val player: ExoPlayer,
     private val dataSourceFactory: DataSource.Factory,
-    private val settings: SettingsRepository
+    private val settings: SettingsRepository,
+    private val djFilter: CrossfadeFilterAudioProcessor
 ) {
     private enum class Phase { IDLE, SYNC, HANDOFF, FADING }
 
@@ -54,6 +71,13 @@ class CrossfadeManager(
     // Pemutar kedua: memutar sisa lagu lama selama lagu baru masuk
     private var tail: ExoPlayer? = null
     private var tailMediaId: String? = null
+
+    // Filter di rantai audio pemutar kedua (low-pass untuk lagu yang keluar)
+    private var tailFilter: CrossfadeFilterAudioProcessor? = null
+
+    // Transisi ala DJ dipakai untuk crossfade yang sedang disiapkan/berjalan. Dibaca sekali saat
+    // sinkronisasi dimulai, jadi mengubah pengaturan di tengah transisi tidak memotongnya.
+    private var djActive = false
 
     // Posisi pemutar utama (ms) saat pemutar kedua harus mulai dijalankan
     private var tailTriggerPosMs = 0L
@@ -85,7 +109,6 @@ class CrossfadeManager(
     private var phaseStartedAtMs = 0L
 
     private var fadeDurationMs = 0L
-    private var lastFadeTickMs = 0L
 
     // Posisi awal masing-masing pemutar saat fade mulai. Kemajuan fade dibaca dari posisi putar
     // yang sebenarnya (jam audio), bukan dari stopwatch, supaya selalu sinkron dengan suara.
@@ -162,6 +185,7 @@ class CrossfadeManager(
         handler.removeCallbacksAndMessages(null)
         player.removeListener(listener)
         phase = Phase.IDLE
+        endDjFilters()
         releaseTail()
     }
 
@@ -205,8 +229,9 @@ class CrossfadeManager(
     // ---- Persiapan dan pemicu ----
 
     private fun checkTrigger() {
-        // Pengaman: volume tidak boleh tertinggal di bawah 1 kalau tidak sedang crossfade
+        // Pengaman: volume dan filter DJ tidak boleh tertinggal kalau tidak sedang crossfade
         if (player.volume != 1f) player.volume = 1f
+        if (djFilter.enabled) djFilter.enabled = false
 
         val crossfadeMs = settings.crossfadeMs()
         val item = player.currentMediaItem
@@ -228,13 +253,15 @@ class CrossfadeManager(
         }
         val id = item.mediaId
 
-        // Lagu pendek: crossfade tidak boleh lebih dari sepertiga lagu
-        val fadeMs = minOf(crossfadeMs, duration / 3)
-        if (fadeMs < MIN_FADE_MS) {
+        // Lagu pendek (aturan SimpMusic): lagu harus cukup panjang supaya kedua sisi transisi masih
+        // enak didengar. Pada fade 5 detik, lagu 20 detik sudah separuhnya habis untuk fade, dan
+        // fade yang lebih panjang akan menelan lagu itu seluruhnya; makanya batasnya ikut lama fade.
+        if (duration < maxOf(MIN_CROSSFADE_TRACK_MS, crossfadeMs * 3)) {
             note("[$id] dilewati: lagu terlalu pendek")
             releaseTail()
             return
         }
+        val fadeMs = crossfadeMs
         currentFadeMs = fadeMs
 
         if (tail != null && tailMediaId != item.mediaId) releaseTail()
@@ -301,7 +328,8 @@ class CrossfadeManager(
     private fun prepareTail(item: MediaItem, triggerPosMs: Long) {
         tailCompUsedMs = tailCompensationMs
         val startMs = triggerPosMs + tailCompUsedMs.toLong()
-        val p = ExoPlayer.Builder(context)
+        val filter = CrossfadeFilterAudioProcessor()
+        val p = ExoPlayer.Builder(context, DjFilterRenderersFactory(context, filter))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -316,6 +344,7 @@ class CrossfadeManager(
         p.playWhenReady = false
         p.prepare()
         tail = p
+        tailFilter = filter
         tailMediaId = item.mediaId
         lastPrepareAtMs = SystemClock.elapsedRealtime()
         tailTriggerPosMs = triggerPosMs
@@ -331,6 +360,18 @@ class CrossfadeManager(
 
     private fun startSync(t: ExoPlayer) {
         t.volume = 0f
+        // Low-pass lagu lama dinyalakan sekarang, selagi pemutar kedua masih senyap, di cutoff
+        // terbuka lebar (20 kHz). Dengan begitu riwayat filternya sudah terisi saat suaranya
+        // diambil alih; kalau baru dinyalakan di tengah lagu yang sedang bersuara keras, awal
+        // filter dari keadaan kosong bisa terdengar sebagai "tik".
+        djActive = settings.crossfadeDjMode()
+        if (djActive) {
+            tailFilter?.apply {
+                filterType = BiquadFilter.FilterType.LOW_PASS
+                cutoffFrequencyHz = LPF_START_HZ
+                enabled = true
+            }
+        }
         tailPlayStartPosMs = t.currentPosition
         offsetAvgMs = 0f
         offsetSamples = 0
@@ -430,6 +471,7 @@ class CrossfadeManager(
         Log.d(TAG, "crossfade dibatalkan, lagu pindah biasa: $reason")
         phase = Phase.IDLE
         player.volume = 1f
+        endDjFilters()
         releaseTail()
     }
 
@@ -448,6 +490,13 @@ class CrossfadeManager(
         // Pemutar kedua sudah memegang suara lagu lama; pemutar utama senyap, aman dipindah
         t.volume = 1f
         player.volume = 0f
+        // High-pass lagu baru dinyalakan selagi pemutar utama masih senyap, sebelum pindah lagu,
+        // jadi lagu baru sudah lewat filter sejak sampel pertamanya (cutoff awal 2 kHz).
+        if (djActive) {
+            djFilter.filterType = BiquadFilter.FilterType.HIGH_PASS
+            djFilter.cutoffFrequencyHz = HPF_START_HZ
+            djFilter.enabled = true
+        }
         selfSeeking = true
         try {
             player.seekToNextMediaItem()
@@ -463,15 +512,10 @@ class CrossfadeManager(
         incomingStartMs = player.currentPosition
         incomingProgress = 0f
         outgoingProgress = 0f
-        lastFadeTickMs = now
         fadeStartedAtMs = now
     }
 
     private fun stepFade() {
-        val now = SystemClock.elapsedRealtime()
-        val dt = (now - lastFadeTickMs).coerceAtLeast(0L)
-        lastFadeTickMs = now
-
         // Kemajuan tiap lagu dihitung dari posisi putarnya sendiri. Jadi:
         // - lagu baru baru naik setelah benar-benar terdengar (stream lambat tidak bikin lonjakan),
         // - jeda/lanjut ikut otomatis karena posisi berhenti bergerak.
@@ -491,10 +535,21 @@ class CrossfadeManager(
             )
         }
 
-        // Equal-power (sin/cos) dengan ujung landai: lagu baru naik pelan dari nol dan lagu lama
-        // turun pelan ke nol. Titik tengah tetap sama (-3 dB masing-masing), tenaga total rata.
-        player.volume = smooth(player.volume, sin(shape(incomingProgress) * HALF_PI), dt)
-        outgoingPlayer?.let { it.volume = smooth(it.volume, cos(shape(outgoingProgress) * HALF_PI), dt) }
+        // Equal-power seperti SimpMusic: lagu lama cos(sudut), lagu baru sin(sudut), sudut naik
+        // linear dari 0 ke 90 derajat. cos^2 + sin^2 = 1, jadi tenaga total tetap rata dan lagu
+        // lama tidak "mati" di tengah sebelum lagu baru terisi.
+        player.volume = sin(incomingProgress * HALF_PI)
+        outgoingPlayer?.volume = cos(outgoingProgress * HALF_PI)
+
+        // Sapuan filter ala DJ berjalan bersama volume. Sumbu waktunya sigmoid (datar di awal dan
+        // akhir, curam di tengah, seperti crossfader mixer DJ); sumbu frekuensinya eksponensial
+        // karena telinga mendengar frekuensi secara logaritmik.
+        if (djActive) {
+            tailFilter?.cutoffFrequencyHz =
+                exponentialInterpolate(LPF_START_HZ, LPF_END_HZ, sigmoid(outgoingProgress))
+            djFilter.cutoffFrequencyHz =
+                exponentialInterpolate(HPF_START_HZ, HPF_END_HZ, sigmoid(incomingProgress))
+        }
 
         if (incomingProgress >= 1f) finishFade()
     }
@@ -502,25 +557,35 @@ class CrossfadeManager(
     private fun progress(playedMs: Long): Float =
         (playedMs.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
 
-    // Smoothstep: kemiringan nol di kedua ujung, sehingga tidak ada "ketukan" di awal/akhir fade
-    private fun shape(x: Float): Float = x * x * (3f - 2f * x)
+    /** Kurva S: 1 / (1 + e^(-k (t - 0,5))). Dengan k = 6, sapuan terjadi sekitar 8%-92% durasi. */
+    private fun sigmoid(t: Float): Float = 1f / (1f + exp(-DJ_FILTER_SIGMOID_K * (t - 0.5f)))
 
-    // Penghalus bergantung waktu (bukan per tick), supaya hasilnya sama walau tick sempat telat
-    private fun smooth(current: Float, target: Float, dtMs: Long): Float {
-        val alpha = 1f - exp(-dtMs / SMOOTH_TAU_MS)
-        return current + (target - current) * alpha
+    /** Interpolasi eksponensial antara dua frekuensi; terdengar merata karena telinga logaritmik. */
+    private fun exponentialInterpolate(start: Float, end: Float, t: Float): Float {
+        if (start <= 0f || end <= 0f) return end
+        return exp(ln(start) + (ln(end) - ln(start)) * t)
     }
 
     private fun finishFade() {
         Log.d(TAG, "fade selesai")
         phase = Phase.IDLE
+        endDjFilters()
         releaseTail()
         player.volume = 1f
+    }
+
+    /** Matikan filter DJ di kedua pemutar; mematikan filter juga mengosongkan riwayatnya. */
+    private fun endDjFilters() {
+        djFilter.enabled = false
+        tailFilter?.enabled = false
+        djActive = false
     }
 
     private fun releaseTail() {
         tail?.release()
         tail = null
+        tailFilter?.enabled = false
+        tailFilter = null
         tailMediaId = null
     }
 
@@ -536,9 +601,6 @@ class CrossfadeManager(
         // ~60 langkah volume per detik; 50 ms (20/detik) terdengar bergelombang
         const val FAST_TICK_MS = 16L
 
-        // Konstanta waktu penghalus volume (ms); kecil = cepat mengikuti target
-        const val SMOOTH_TAU_MS = 24f
-
         // Pemutar kedua mulai disiapkan sekian ms sebelum titik sinkronisasi
         const val PREPARE_AHEAD_MS = 15_000L
 
@@ -548,8 +610,20 @@ class CrossfadeManager(
         const val LATE_PREPARE_AHEAD_MS = 1_500L
         const val LATE_PREPARE_RETRY_MS = 1_000L
 
-        // Crossfade lebih pendek dari ini tidak terdengar, jadi dilewati
-        const val MIN_FADE_MS = 1_000L
+        // Lagu yang lebih pendek dari ini (atau dari 3x lama crossfade, mana yang lebih besar)
+        // tidak di-crossfade. Sama dengan MIN_CROSSFADE_TRACK_MS di SimpMusic.
+        const val MIN_CROSSFADE_TRACK_MS = 20_000L
+
+        // Transisi ala DJ (nilai sama dengan SimpMusic). Kecuratan kurva S: makin besar makin tajam.
+        const val DJ_FILTER_SIGMOID_K = 6f
+
+        // Low-pass lagu lama: terbuka lebar lalu meredam sampai tinggal dentuman bass
+        const val LPF_START_HZ = 20000f
+        const val LPF_END_HZ = 200f
+
+        // High-pass lagu baru: mulai dari 2 kHz supaya lagu baru cepat terisi, lalu terbuka penuh
+        const val HPF_START_HZ = 2000f
+        const val HPF_END_HZ = 20f
 
         // Sisa lagu minimal untuk masih memulai sinkronisasi
         const val MIN_START_REMAINING_MS = 900L

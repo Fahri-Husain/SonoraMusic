@@ -12,6 +12,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
+import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.SettingsRepository
@@ -80,7 +82,10 @@ class PlaybackService : MediaSessionService() {
             resolver
         )
 
-        val player = ExoPlayer.Builder(this)
+        // Filter low/high-pass untuk transisi ala DJ; hanya aktif selama crossfade (lihat CrossfadeManager)
+        val djFilter = CrossfadeFilterAudioProcessor()
+
+        val player = ExoPlayer.Builder(this, DjFilterRenderersFactory(this, djFilter))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -122,7 +127,7 @@ class PlaybackService : MediaSessionService() {
         }
 
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
-        crossfade = CrossfadeManager(this, player, dataSourceFactory, SettingsRepository.getInstance(this))
+        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =

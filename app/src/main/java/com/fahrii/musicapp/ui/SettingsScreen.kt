@@ -121,6 +121,8 @@ fun SettingsScreen(
     crossfadeSeconds: Int,
     onCrossfadeEnabledChange: (Boolean) -> Unit,
     onCrossfadeSecondsChange: (Int) -> Unit,
+    crossfadeDjMode: Boolean,
+    onCrossfadeDjModeChange: (Boolean) -> Unit,
     streamQuality: AudioQuality,
     downloadQuality: AudioQuality,
     skipSilence: Boolean,
@@ -254,6 +256,19 @@ fun SettingsScreen(
                 )
                 if (crossfadeEnabled) {
                     CrossfadeDuration(seconds = crossfadeSeconds, onChange = onCrossfadeSecondsChange)
+                    SettingsDivider()
+                    SettingsItem(
+                        icon = AppIcons.MusicNote,
+                        title = "Transisi ala DJ",
+                        subtitle = "Lagu lama diredam dan lagu baru dibuka bertahap, seperti mixer DJ",
+                        trailing = {
+                            Switch(
+                                checked = crossfadeDjMode,
+                                onCheckedChange = onCrossfadeDjModeChange,
+                                colors = sonoraSwitchColors()
+                            )
+                        }
+                    )
                 }
                 SettingsDivider()
                 SettingsItem(
