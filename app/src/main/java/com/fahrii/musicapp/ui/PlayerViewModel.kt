@@ -35,6 +35,9 @@ data class PlayerUiState(
     /** Lagu yang akan diputar kalau next/previous ditekan; null kalau tidak ada. Dipakai untuk pratinjau saat cover digeser. */
     val nextSong: Song? = null,
     val previousSong: Song? = null,
+    /** Seluruh antrean sesuai urutan di pemutar, dan posisi lagu yang sedang diputar di dalamnya. */
+    val queue: List<Song> = emptyList(),
+    val currentIndex: Int = 0,
     val error: String? = null,
     /** Dari mana lagu diputar, mis. Playlist "my gweh". */
     val sourceLabel: String? = null
@@ -215,6 +218,29 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         c.addMediaItem(c.currentMediaItemIndex + 1, song.toMediaItem())
     }
 
+    /** Loncat ke lagu ke-[index] di antrean dan langsung memutarnya. */
+    fun skipToQueueItem(index: Int) {
+        val c = controller ?: return
+        if (index !in 0 until c.mediaItemCount) return
+        c.seekTo(index, 0L)
+        c.play()
+    }
+
+    /** Pindahkan lagu dari posisi [from] ke posisi [to] di antrean (dipakai saat digeser). */
+    fun moveInQueue(from: Int, to: Int) {
+        val c = controller ?: return
+        val count = c.mediaItemCount
+        if (from !in 0 until count || to !in 0 until count || from == to) return
+        c.moveMediaItem(from, to)
+    }
+
+    /** Hapus lagu ke-[index] dari antrean. Lagu yang sedang diputar tidak bisa dihapus dari sini. */
+    fun removeFromQueue(index: Int) {
+        val c = controller ?: return
+        if (index !in 0 until c.mediaItemCount || index == c.currentMediaItemIndex) return
+        c.removeMediaItem(index)
+    }
+
     fun togglePlayPause() {
         val c = controller ?: return
         if (c.isPlaying) {
@@ -321,6 +347,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 hasNext = player.hasNextMediaItem(),
                 nextSong = nextSong,
                 previousSong = previousSong,
+                queue = List(player.mediaItemCount) { i -> player.getMediaItemAt(i).toSong() },
+                currentIndex = currentIdx.coerceAtLeast(0),
                 error = player.playerError?.let { e -> "Gagal memutar: ${e.errorCodeName}" }
             )
         }

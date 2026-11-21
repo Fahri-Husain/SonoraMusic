@@ -14,7 +14,6 @@ import com.adamglin.phosphoricons.bold.CaretDown
 import com.adamglin.phosphoricons.bold.Check
 import com.adamglin.phosphoricons.bold.CaretLeft
 import com.adamglin.phosphoricons.bold.CaretRight
-import com.adamglin.phosphoricons.bold.ListPlus
 import com.adamglin.phosphoricons.bold.MagnifyingGlass
 import com.adamglin.phosphoricons.bold.Plus
 import com.adamglin.phosphoricons.bold.Repeat
@@ -43,7 +42,6 @@ import com.adamglin.phosphoricons.fill.Disc
 import com.adamglin.phosphoricons.fill.ImageSquare
 import com.adamglin.phosphoricons.fill.Pencil
 import com.adamglin.phosphoricons.fill.PlayCircle
-import com.adamglin.phosphoricons.fill.Playlist
 import com.adamglin.phosphoricons.fill.Radio
 import com.adamglin.phosphoricons.fill.ShareNetwork
 import com.adamglin.phosphoricons.fill.Trash as TrashFill
@@ -60,7 +58,7 @@ object AppIcons {
     val Repeat: ImageVector = PhosphorIcons.Bold.Repeat
     val RepeatOne: ImageVector = PhosphorIcons.Bold.RepeatOnce
     val Plus: ImageVector = PhosphorIcons.Bold.Plus
-    val PlaylistAdd: ImageVector = PhosphorIcons.Bold.ListPlus
+    val PlaylistAdd: ImageVector = CustomIcons.AddList
     val Check: ImageVector = PhosphorIcons.Bold.Check
 
     val Play: ImageVector = PhosphorIcons.Fill.Play
@@ -93,7 +91,7 @@ object AppIcons {
 
     val Edit: ImageVector = PhosphorIcons.Fill.Pencil
     val EditImage: ImageVector = PhosphorIcons.Fill.ImageSquare
-    val Queue: ImageVector = PhosphorIcons.Fill.Playlist
+    val Queue: ImageVector = CustomIcons.Playlist
     val Sync: ImageVector = PhosphorIcons.Fill.ArrowsClockwise
     val Refresh: ImageVector = PhosphorIcons.Fill.ClockClockwise
     val DeleteFilled: ImageVector = PhosphorIcons.Fill.TrashFill

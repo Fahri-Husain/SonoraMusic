@@ -151,6 +151,7 @@ fun NowPlayingScreen(
 
     val isLiked = library.liked.any { it.url == song.url }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
 
     var isDragging by remember { mutableStateOf(false) }
@@ -560,12 +561,14 @@ fun NowPlayingScreen(
                                 )
                                 // Tombol kecil tepat di garis tepi cover (pusat tombol di keliling lingkaran),
                                 // ikut beranimasi bersama cover. Tambah ke playlist di sudut 45° kanan bawah,
-                                // titik tiga (menu lagu) di atasnya, berjarak satu tombol + celah sepanjang busur.
+                                // titik tiga (menu lagu) di atasnya dan antrean di bawahnya, masing-masing
+                                // berjarak satu tombol + celah sepanjang busur.
                                 val radius = side.value / 2f
                                 val halfButton = 22f // setengah ukuran RoundButton (44 dp)
                                 val playlistAngle = (Math.PI / 4).toFloat()
                                 val gapAngle = 2f * asin(((44f + 8f) / 2f / radius).coerceAtMost(1f))
                                 val moreAngle = playlistAngle - gapAngle
+                                val queueAngle = playlistAngle + gapAngle
 
                                 RoundButton(
                                     onClick = { onOpenMenu(s) },
@@ -595,6 +598,23 @@ fun NowPlayingScreen(
                                     Icon(
                                         imageVector = AppIcons.PlaylistAdd,
                                         contentDescription = "Tambah ke playlist",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                // Antrean: tombol ketiga, melanjutkan lengkungan ke bawah
+                                RoundButton(
+                                    onClick = { showQueue = true },
+                                    modifier = Modifier
+                                        .align(Alignment.TopStart)
+                                        .offset(
+                                            x = (radius + radius * cos(queueAngle) - halfButton).dp,
+                                            y = (radius + radius * sin(queueAngle) - halfButton).dp
+                                        )
+                                ) {
+                                    Icon(
+                                        imageVector = AppIcons.Queue,
+                                        contentDescription = "Antrean",
                                         tint = Color.White,
                                         modifier = Modifier.size(20.dp)
                                     )
@@ -853,6 +873,18 @@ fun NowPlayingScreen(
             onAdd = { libraryViewModel.addToPlaylist(it.id, song) },
             onRemove = { libraryViewModel.removeFromPlaylist(it.id, song.url) },
             onDismiss = { showAddDialog = false }
+        )
+    }
+
+    if (showQueue) {
+        QueueSheet(
+            queue = state.queue,
+            currentIndex = state.currentIndex,
+            isPlaying = state.isPlaying,
+            onDismiss = { showQueue = false },
+            onPlayItem = { viewModel.skipToQueueItem(it) },
+            onRemoveItem = { viewModel.removeFromQueue(it) },
+            onMoveItem = { from, to -> viewModel.moveInQueue(from, to) }
         )
     }
 }
