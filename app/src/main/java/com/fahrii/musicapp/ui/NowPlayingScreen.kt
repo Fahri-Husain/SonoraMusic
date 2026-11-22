@@ -145,10 +145,17 @@ private const val SONG_CHANGE_BG_MS = 700
 private const val SONG_CHANGE_COVER_MS = 520
 private const val SONG_CHANGE_TEXT_MS = 420
 
-// Saat crossfade: judul muncul dulu, lalu cover dan gradient latar berganti pelan (ala Apple Music)
-private const val XFADE_TEXT_MS = 500
-private const val XFADE_TEXT_DELAY_MS = 200
-private const val XFADE_COVER_DELAY_MS = 500
+// Saat crossfade: cover, judul, dan artis berganti berurutan dengan jeda yang sama, latar berganti pelan (ala Apple Music)
+private const val XFADE_COVER_DELAY_MS = 750
+
+/** Seberapa jauh teks lama naik saat memudar di crossfade (1f = setinggi blok judul + artis). */
+private const val XFADE_TEXT_RISE = 0.5f
+
+// Judul dan artis berganti lebih dulu: yang lama naik sambil memudar, lalu yang baru langsung muncul
+// dari bawah. Cover menyusul sesudahnya (waktunya diatur XFADE_COVER_DELAY_MS di atas).
+private const val XFADE_TEXT_EXIT_MS = 450
+private const val XFADE_TEXT_EXIT_DELAY_MS = 150
+private const val XFADE_TEXT_ENTER_MS = 500
 
 /** Ukuran cover saat paling kecil di tengah transisi (1f = ukuran penuh). */
 private const val XFADE_COVER_SCALE = 0.85f
@@ -727,14 +734,33 @@ fun NowPlayingScreen(
                 targetState = song,
                 contentKey = { it.url },
                 transitionSpec = {
-                    // Saat crossfade judul muncul paling dulu tapi dengan jeda singkat supaya enak dilihat; ganti lagu biasa jeda 120 ms
-                    val ms = if (isCrossfading) XFADE_TEXT_MS else SONG_CHANGE_TEXT_MS
-                    val delay = if (isCrossfading) XFADE_TEXT_DELAY_MS else 120
-                    (fadeIn(tween(ms, delayMillis = delay, easing = FastOutSlowInEasing)) +
-                            slideInVertically(tween(ms, delayMillis = delay, easing = FastOutSlowInEasing)) { it / 3 }) togetherWith
-                            (fadeOut(tween(ms / 2, easing = FastOutSlowInEasing)) +
-                                    slideOutVertically(tween(ms, easing = FastOutSlowInEasing)) { -it / 3 }) using
-                            SizeTransform(clip = false)
+                    if (isCrossfading) {
+                        // Saat crossfade: judul dan artis lama naik sambil memudar (tanpa mengecil), lalu
+                        // yang baru muncul dari bawah begitu yang lama selesai. Cover menyusul sesudahnya.
+                        val enterDelay = XFADE_TEXT_EXIT_DELAY_MS + XFADE_TEXT_EXIT_MS
+                        (fadeIn(tween(XFADE_TEXT_ENTER_MS, delayMillis = enterDelay, easing = FastOutSlowInEasing)) +
+                                slideInVertically(
+                                    tween(XFADE_TEXT_ENTER_MS, delayMillis = enterDelay, easing = FastOutSlowInEasing)
+                                ) { it / 3 }) togetherWith
+                                (fadeOut(
+                                    tween(XFADE_TEXT_EXIT_MS, delayMillis = XFADE_TEXT_EXIT_DELAY_MS, easing = FastOutSlowInEasing)
+                                ) +
+                                        slideOutVertically(
+                                            tween(XFADE_TEXT_EXIT_MS, delayMillis = XFADE_TEXT_EXIT_DELAY_MS, easing = FastOutSlowInEasing)
+                                        ) { -(it * XFADE_TEXT_RISE).toInt() }) using
+                                SizeTransform(clip = false)
+                    } else {
+                        // Ganti lagu biasa: jeda 120 ms
+                        (fadeIn(tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)) +
+                                slideInVertically(
+                                    tween(SONG_CHANGE_TEXT_MS, delayMillis = 120, easing = FastOutSlowInEasing)
+                                ) { it / 3 }) togetherWith
+                                (fadeOut(tween(SONG_CHANGE_TEXT_MS / 2, easing = FastOutSlowInEasing)) +
+                                        slideOutVertically(
+                                            tween(SONG_CHANGE_TEXT_MS, easing = FastOutSlowInEasing)
+                                        ) { -it / 3 }) using
+                                SizeTransform(clip = false)
+                    }
                 },
                 label = "nowPlayingTitle",
                 modifier = Modifier.fillMaxWidth()

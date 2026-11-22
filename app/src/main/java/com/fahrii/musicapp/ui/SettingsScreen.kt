@@ -29,7 +29,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -37,6 +41,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
@@ -46,7 +52,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +59,7 @@ import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -71,6 +77,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -231,283 +239,301 @@ fun SettingsScreen(
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(AppIcons.BackArrow, contentDescription = "Kembali", modifier = Modifier.size(22.dp))
-            }
-        }
+    // Header ikut pola halaman playlist: tombol kembali kaca ikut tergulir naik, lalu setelah judul
+    // "Setting" mepet status bar muncul bar kaca blur berisi panah kembali + judul.
+    val listState = rememberLazyListState()
+    val backdrop = rememberGlassBackdrop()
+    var titleBottom by remember { mutableFloatStateOf(Float.MAX_VALUE) }
+    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
-        Column(
+    Box(modifier = modifier.fillMaxSize()) {
+        LazyColumn(
+            state = listState,
             modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(26.dp)
+                .fillMaxSize()
+                .glassSource(backdrop)
+                .background(Sonora.Background),
+            // Ruang untuk status bar + tombol kembali melayang di atas judul
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = statusBarTop + 56.dp,
+                bottom = LocalBottomInset.current
+            )
         ) {
-            Text(
-                text = "Setting",
-                fontSize = 30.sp,
-                lineHeight = 36.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = (-0.6).sp,
-                modifier = Modifier.padding(horizontal = 6.dp)
-            )
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(26.dp)) {
+                    Text(
+                        text = "Setting",
+                        fontSize = 26.sp,
+                        lineHeight = 32.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = (-0.5).sp,
+                        modifier = Modifier
+                            .padding(horizontal = 6.dp)
+                            .onGloballyPositioned { titleBottom = it.boundsInRoot().bottom }
+                    )
 
-            CrossfadeHero(
-                enabled = crossfadeEnabled,
-                seconds = crossfadeSeconds,
-                onEnabledChange = onCrossfadeEnabledChange,
-                onSecondsChange = onCrossfadeSecondsChange
-            )
+                    CrossfadeHero(
+                        enabled = crossfadeEnabled,
+                        seconds = crossfadeSeconds,
+                        onEnabledChange = onCrossfadeEnabledChange,
+                        onSecondsChange = onCrossfadeSecondsChange
+                    )
 
-            SettingsSection(title = "Pemutaran") {
-                // Transisi ala DJ hanya ada selama Crossfade menyala: muncul (sudah aktif, lihat
-                // SettingsRepository.setCrossfadeEnabled) dan bisa dimatikan sendiri, lalu hilang
-                // dari baris begitu Crossfade dimatikan. Garis pemisahnya ikut di dalam blok ini
-                // supaya tidak tertinggal saat barisnya tersembunyi.
-                AnimatedVisibility(
-                    visible = crossfadeEnabled,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    Column {
+                    SettingsSection(title = "Pemutaran") {
+                        // Transisi ala DJ hanya ada selama Crossfade menyala: muncul (sudah aktif, lihat
+                        // SettingsRepository.setCrossfadeEnabled) dan bisa dimatikan sendiri, lalu hilang
+                        // dari baris begitu Crossfade dimatikan. Garis pemisahnya ikut di dalam blok ini
+                        // supaya tidak tertinggal saat barisnya tersembunyi.
+                        AnimatedVisibility(
+                            visible = crossfadeEnabled,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column {
+                                SettingsItem(
+                                    icon = SettingsIcons.Sliders,
+                                    title = "Transisi ala DJ",
+                                    subtitle = "Lagu lama diredam, lagu baru dibuka bertahap",
+                                    trailing = {
+                                        SonoraSwitch(
+                                            checked = crossfadeDjMode,
+                                            onCheckedChange = onCrossfadeDjModeChange,
+                                            label = "Transisi ala DJ"
+                                        )
+                                    }
+                                )
+                                SettingsDivider()
+                            }
+                        }
                         SettingsItem(
-                            icon = SettingsIcons.Sliders,
-                            title = "Transisi ala DJ",
-                            subtitle = "Lagu lama diredam, lagu baru dibuka bertahap",
+                            icon = SettingsIcons.SkipSilence,
+                            title = "Lewati bagian senyap",
                             trailing = {
                                 SonoraSwitch(
-                                    checked = crossfadeDjMode,
-                                    onCheckedChange = onCrossfadeDjModeChange,
-                                    label = "Transisi ala DJ"
+                                    checked = skipSilence,
+                                    onCheckedChange = onSkipSilenceChange,
+                                    label = "Lewati bagian senyap"
                                 )
                             }
                         )
                         SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Waveform,
+                            title = "Kualitas streaming",
+                            onClick = { qualityDialog = QualityTarget.STREAM },
+                            trailing = { ValueWithChevron(streamQuality.label) }
+                        )
                     }
+
+                    SettingsSection(title = "Kontrol") {
+                        SettingsItem(
+                            icon = SettingsIcons.Phone,
+                            title = "Goyang untuk ganti lagu",
+                            subtitle = "Hanya saat aplikasi terbuka",
+                            trailing = {
+                                SonoraSwitch(
+                                    checked = shakeToSkip,
+                                    onCheckedChange = onShakeToSkipChange,
+                                    label = "Goyang untuk ganti lagu"
+                                )
+                            }
+                        )
+                    }
+
+                    SettingsSection(title = "Lirik") {
+                        SettingsItem(
+                            icon = SettingsIcons.TextSize,
+                            title = "Ukuran lirik",
+                            singleLine = true,
+                            trailing = {
+                                SegmentedControl(
+                                    options = LyricsFontSize.entries,
+                                    selected = lyricsFontSize,
+                                    label = { it.label },
+                                    onSelect = onLyricsFontSizeChange
+                                )
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Blur,
+                            title = "Blur lirik",
+                            subtitle = "Baris jauh dari baris aktif jadi buram (Android 12+)",
+                            trailing = {
+                                SonoraSwitch(
+                                    checked = lyricsBlur,
+                                    onCheckedChange = onLyricsBlurChange,
+                                    label = "Blur lirik"
+                                )
+                            }
+                        )
+                    }
+
+                    SettingsSection(title = "Lainnya") {
+                        SettingsItem(
+                            icon = SettingsIcons.Moon,
+                            title = "Timer tidur",
+                            onClick = { showSleepDialog = true },
+                            trailing = {
+                                ValueWithChevron(if (sleepRemainingMin > 0) "$sleepRemainingMin mnt" else "Mati")
+                            }
+                        )
+                        SettingsDivider()
+                        // Belum ada fungsinya: baris ini hanya menandai tempatnya di Setting
+                        SettingsItem(
+                            icon = SettingsIcons.Pulse,
+                            title = "AutoMix",
+                            subtitle = "Transisi mengikuti tempo lagu",
+                            trailing = { SoonBadge() }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Bell,
+                            title = "Notifikasi pemutar",
+                            subtitle = if (notificationsEnabled) null
+                            else "Kontrol musik tidak tampil. Ketuk untuk mengaktifkan",
+                            onClick = { openNotificationSettings(context) },
+                            trailing = { ValueWithChevron(if (notificationsEnabled) "Aktif" else "Mati") }
+                        )
+                    }
+
+                    SettingsSection(title = "Unduhan dan penyimpanan") {
+                        SettingsItem(
+                            icon = SettingsIcons.Waveform,
+                            title = "Kualitas unduhan",
+                            onClick = { qualityDialog = QualityTarget.DOWNLOAD },
+                            trailing = { ValueWithChevron(downloadQuality.label) }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Wifi,
+                            title = "Unduh hanya lewat Wi-Fi",
+                            trailing = {
+                                SonoraSwitch(
+                                    checked = downloadWifiOnly,
+                                    onCheckedChange = onDownloadWifiOnlyChange,
+                                    label = "Unduh hanya lewat Wi-Fi"
+                                )
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Download,
+                            title = "Lagu terunduh",
+                            subtitle = if (downloadedCount == 0) null
+                            else Formatter.formatShortFileSize(context, downloadedBytes),
+                            trailing = {
+                                ValueWithChevron(
+                                    value = if (downloadedCount == 0) "Belum ada" else "$downloadedCount lagu",
+                                    showChevron = false
+                                )
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Eraser,
+                            title = "Hapus cache",
+                            onClick = {
+                                onClearCache()
+                                Toast.makeText(context, "Cache dibersihkan", Toast.LENGTH_SHORT).show()
+                            },
+                            trailing = {
+                                ValueWithChevron(
+                                    value = Formatter.formatShortFileSize(context, cacheBytes),
+                                    showChevron = false
+                                )
+                            }
+                        )
+                    }
+
+                    SettingsSection(title = "Cadangan data") {
+                        SettingsItem(
+                            icon = SettingsIcons.Upload,
+                            title = "Ekspor cadangan",
+                            subtitle = if (backupBusy) "Memproses…" else null,
+                            onClick = {
+                                if (!backupBusy) exportLauncher.launch("SonoraMusic-backup-${LocalDate.now()}.json")
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Download,
+                            title = "Impor cadangan",
+                            subtitle = if (backupBusy) "Memproses…" else null,
+                            onClick = {
+                                if (!backupBusy) importLauncher.launch(arrayOf("*/*"))
+                            }
+                        )
+                    }
+
+                    SettingsSection(title = "Zona hati-hati") {
+                        SettingsItem(
+                            icon = SettingsIcons.Trash,
+                            title = "Hapus semua unduhan",
+                            danger = true,
+                            onClick = {
+                                if (downloadedCount > 0) confirm = ClearTarget.DOWNLOADS
+                                else Toast.makeText(context, "Belum ada lagu yang diunduh", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Search,
+                            title = "Hapus riwayat pencarian",
+                            danger = true,
+                            onClick = { confirm = ClearTarget.SEARCH }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Clock,
+                            title = "Hapus riwayat putar",
+                            danger = true,
+                            onClick = { confirm = ClearTarget.PLAY }
+                        )
+                    }
+
+                    SettingsSection(title = "Tentang") {
+                        SettingsItem(
+                            icon = SettingsIcons.Note,
+                            title = "SonoraMusic",
+                            subtitle = "Versi ${versionName ?: "-"}"
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Share,
+                            title = "Kode sumber",
+                            subtitle = "github.com/Fahri-Husain/SonoraMusic",
+                            onClick = { openUrl(context, GITHUB_URL) }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Pencil,
+                            title = "Laporkan masalah",
+                            subtitle = "Buka halaman Issues di GitHub",
+                            onClick = { openUrl(context, ISSUES_URL) }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.ListPlus,
+                            title = "Lisensi open source",
+                            subtitle = "Pustaka pihak ketiga yang dipakai aplikasi ini",
+                            onClick = { showLicenses = true }
+                        )
+                    }
+
                 }
-                SettingsItem(
-                    icon = SettingsIcons.SkipSilence,
-                    title = "Lewati bagian senyap",
-                    trailing = {
-                        SonoraSwitch(
-                            checked = skipSilence,
-                            onCheckedChange = onSkipSilenceChange,
-                            label = "Lewati bagian senyap"
-                        )
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Waveform,
-                    title = "Kualitas streaming",
-                    onClick = { qualityDialog = QualityTarget.STREAM },
-                    trailing = { ValueWithChevron(streamQuality.label) }
-                )
             }
-
-            SettingsSection(title = "Kontrol") {
-                SettingsItem(
-                    icon = SettingsIcons.Phone,
-                    title = "Goyang untuk ganti lagu",
-                    subtitle = "Hanya saat aplikasi terbuka",
-                    trailing = {
-                        SonoraSwitch(
-                            checked = shakeToSkip,
-                            onCheckedChange = onShakeToSkipChange,
-                            label = "Goyang untuk ganti lagu"
-                        )
-                    }
-                )
-            }
-
-            SettingsSection(title = "Lirik") {
-                SettingsItem(
-                    icon = SettingsIcons.TextSize,
-                    title = "Ukuran lirik",
-                    trailing = {
-                        SegmentedControl(
-                            options = LyricsFontSize.entries,
-                            selected = lyricsFontSize,
-                            label = { it.label },
-                            onSelect = onLyricsFontSizeChange
-                        )
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Blur,
-                    title = "Blur lirik",
-                    subtitle = "Baris jauh dari baris aktif jadi buram (Android 12+)",
-                    trailing = {
-                        SonoraSwitch(
-                            checked = lyricsBlur,
-                            onCheckedChange = onLyricsBlurChange,
-                            label = "Blur lirik"
-                        )
-                    }
-                )
-            }
-
-            SettingsSection(title = "Lainnya") {
-                SettingsItem(
-                    icon = SettingsIcons.Moon,
-                    title = "Timer tidur",
-                    onClick = { showSleepDialog = true },
-                    trailing = {
-                        ValueWithChevron(if (sleepRemainingMin > 0) "$sleepRemainingMin mnt" else "Mati")
-                    }
-                )
-                SettingsDivider()
-                // Belum ada fungsinya: baris ini hanya menandai tempatnya di Setting
-                SettingsItem(
-                    icon = SettingsIcons.Pulse,
-                    title = "AutoMix",
-                    subtitle = "Transisi mengikuti tempo lagu",
-                    trailing = { SoonBadge() }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Bell,
-                    title = "Notifikasi pemutar",
-                    subtitle = if (notificationsEnabled) null
-                    else "Kontrol musik tidak tampil. Ketuk untuk mengaktifkan",
-                    onClick = { openNotificationSettings(context) },
-                    trailing = { ValueWithChevron(if (notificationsEnabled) "Aktif" else "Mati") }
-                )
-            }
-
-            SettingsSection(title = "Unduhan dan penyimpanan") {
-                SettingsItem(
-                    icon = SettingsIcons.Waveform,
-                    title = "Kualitas unduhan",
-                    onClick = { qualityDialog = QualityTarget.DOWNLOAD },
-                    trailing = { ValueWithChevron(downloadQuality.label) }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Wifi,
-                    title = "Unduh hanya lewat Wi-Fi",
-                    trailing = {
-                        SonoraSwitch(
-                            checked = downloadWifiOnly,
-                            onCheckedChange = onDownloadWifiOnlyChange,
-                            label = "Unduh hanya lewat Wi-Fi"
-                        )
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Download,
-                    title = "Lagu terunduh",
-                    subtitle = if (downloadedCount == 0) null
-                    else Formatter.formatShortFileSize(context, downloadedBytes),
-                    trailing = {
-                        ValueWithChevron(
-                            value = if (downloadedCount == 0) "Belum ada" else "$downloadedCount lagu",
-                            showChevron = false
-                        )
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Eraser,
-                    title = "Hapus cache",
-                    onClick = {
-                        onClearCache()
-                        Toast.makeText(context, "Cache dibersihkan", Toast.LENGTH_SHORT).show()
-                    },
-                    trailing = {
-                        ValueWithChevron(
-                            value = Formatter.formatShortFileSize(context, cacheBytes),
-                            showChevron = false
-                        )
-                    }
-                )
-            }
-
-            SettingsSection(title = "Cadangan data") {
-                SettingsItem(
-                    icon = SettingsIcons.Upload,
-                    title = "Ekspor cadangan",
-                    subtitle = if (backupBusy) "Memproses…" else null,
-                    onClick = {
-                        if (!backupBusy) exportLauncher.launch("SonoraMusic-backup-${LocalDate.now()}.json")
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Download,
-                    title = "Impor cadangan",
-                    subtitle = if (backupBusy) "Memproses…" else null,
-                    onClick = {
-                        if (!backupBusy) importLauncher.launch(arrayOf("*/*"))
-                    }
-                )
-            }
-
-            SettingsSection(title = "Zona hati-hati") {
-                SettingsItem(
-                    icon = SettingsIcons.Trash,
-                    title = "Hapus semua unduhan",
-                    danger = true,
-                    onClick = {
-                        if (downloadedCount > 0) confirm = ClearTarget.DOWNLOADS
-                        else Toast.makeText(context, "Belum ada lagu yang diunduh", Toast.LENGTH_SHORT).show()
-                    }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Search,
-                    title = "Hapus riwayat pencarian",
-                    danger = true,
-                    onClick = { confirm = ClearTarget.SEARCH }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Clock,
-                    title = "Hapus riwayat putar",
-                    danger = true,
-                    onClick = { confirm = ClearTarget.PLAY }
-                )
-            }
-
-            SettingsSection(title = "Tentang") {
-                SettingsItem(
-                    icon = SettingsIcons.Note,
-                    title = "SonoraMusic",
-                    subtitle = "Versi ${versionName ?: "-"}"
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Share,
-                    title = "Kode sumber",
-                    subtitle = "github.com/Fahri-Husain/SonoraMusic",
-                    onClick = { openUrl(context, GITHUB_URL) }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.Pencil,
-                    title = "Laporkan masalah",
-                    subtitle = "Buka halaman Issues di GitHub",
-                    onClick = { openUrl(context, ISSUES_URL) }
-                )
-                SettingsDivider()
-                SettingsItem(
-                    icon = SettingsIcons.ListPlus,
-                    title = "Lisensi open source",
-                    subtitle = "Pustaka pihak ketiga yang dipakai aplikasi ini",
-                    onClick = { showLicenses = true }
-                )
-            }
-
-            // Supaya item terakhir tidak tertutup mini player dan navbar yang mengambang
-            Spacer(Modifier.height(LocalBottomInset.current))
         }
+
+        HeroTopBars(
+            title = "Setting",
+            listState = listState,
+            titleBottom = titleBottom,
+            backdrop = backdrop,
+            onBack = onBack
+        )
     }
 
     backupOutcome?.let { outcome ->
@@ -808,14 +834,14 @@ private fun CrossfadeHero(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "Crossfade",
-                    fontSize = 17.sp,
+                    fontSize = 15.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     letterSpacing = (-0.2).sp
                 )
                 Text(
                     text = "Lagu saling memudar saat berganti",
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
                     color = Sonora.TextSecondary,
                     modifier = Modifier.padding(top = 2.dp)
                 )
@@ -835,8 +861,8 @@ private fun CrossfadeHero(
                         .padding(start = 2.dp, end = 2.dp, top = 20.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(text = "Durasi", fontSize = 13.sp, color = Sonora.TextSecondary)
-                    Text(text = "$seconds dtk", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text(text = "Durasi", fontSize = 12.sp, color = Sonora.TextSecondary)
+                    Text(text = "$seconds dtk", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 }
                 CrossfadeSlider(value = seconds, onValueChange = onSecondsChange)
                 CrossfadeFlow(modifier = Modifier.padding(top = 18.dp))
@@ -879,7 +905,7 @@ private fun FlowPill(text: String, fadesToEnd: Boolean, modifier: Modifier = Mod
     ) {
         Text(
             text = text,
-            fontSize = 10.5.sp,
+            fontSize = 10.sp,
             lineHeight = 16.sp,
             fontWeight = FontWeight.Medium,
             letterSpacing = 0.2.sp,
@@ -1042,14 +1068,16 @@ private fun <T> SegmentedControl(
             )
             Text(
                 text = label(option),
-                fontSize = 12.5.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
                 color = if (isSelected) Sonora.Background else Sonora.TextSecondary,
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(background)
                     .selectable(selected = isSelected, role = Role.RadioButton, onClick = { onSelect(option) })
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
     }
@@ -1059,7 +1087,7 @@ private fun <T> SegmentedControl(
 @Composable
 private fun ValueWithChevron(value: String, showChevron: Boolean = true) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(text = value, fontSize = 14.sp, color = Sonora.TextSecondary)
+        Text(text = value, fontSize = 13.sp, color = Sonora.TextSecondary)
         if (showChevron) {
             Spacer(Modifier.width(6.dp))
             Icon(
@@ -1077,7 +1105,7 @@ private fun ValueWithChevron(value: String, showChevron: Boolean = true) {
 private fun SoonBadge() {
     Text(
         text = "Segera",
-        fontSize = 11.sp,
+        fontSize = 10.sp,
         fontWeight = FontWeight.SemiBold,
         letterSpacing = 0.3.sp,
         color = Color(0xFF9A9AA2),
@@ -1094,7 +1122,7 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
     Column {
         Text(
             text = title.uppercase(),
-            fontSize = 11.sp,
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 1.3.sp,
             color = SectionLabel,
@@ -1122,6 +1150,7 @@ private fun SettingsItem(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     danger: Boolean = false,
+    singleLine: Boolean = false,
     onClick: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
@@ -1152,16 +1181,18 @@ private fun SettingsItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
-                fontSize = 15.5.sp,
+                fontSize = 14.5.sp,
                 fontWeight = FontWeight.Medium,
                 letterSpacing = (-0.1).sp,
+                maxLines = if (singleLine) 1 else Int.MAX_VALUE,
+                softWrap = !singleLine,
                 color = if (danger) Danger else Color.Unspecified
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    fontSize = 12.5.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 11.5.sp,
+                    lineHeight = 16.sp,
                     color = Sonora.TextSecondary,
                     modifier = Modifier.padding(top = 2.dp)
                 )

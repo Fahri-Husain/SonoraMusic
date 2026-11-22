@@ -499,7 +499,7 @@ fun AppRoot(
                         val cacheBytes by settingsViewModel.cacheBytes.collectAsState()
                         val backupBusy by settingsViewModel.backupBusy.collectAsState()
                         val backupOutcome by settingsViewModel.backupOutcome.collectAsState()
-                        Box(Modifier.fillMaxSize().statusBarsPadding()) {
+                        Box(Modifier.fillMaxSize()) {
                             SettingsScreen(
                                 onBack = { navController.popBackStack() },
                                 crossfadeEnabled = crossfadeEnabled,
