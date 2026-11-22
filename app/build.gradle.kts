@@ -73,4 +73,5 @@ dependencies {
     implementation("com.adamglin:phosphor-icon:1.0.0")
     implementation("dev.chrisbanes.haze:haze:1.7.0")
     implementation("io.github.kyant0:backdrop:1.0.6")
+    implementation("androidx.glance:glance-appwidget:1.1.1")
 }

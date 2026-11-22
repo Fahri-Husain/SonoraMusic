@@ -1,5 +1,6 @@
 package com.fahrii.musicapp
 
+import android.app.PendingIntent
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -25,6 +26,7 @@ import com.fahrii.musicapp.data.LibraryRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.SettingsRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.widget.WidgetUpdater
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -51,6 +53,7 @@ class PlaybackService : MediaSessionService() {
     private val likeCommand = SessionCommand(ACTION_TOGGLE_LIKE, Bundle.EMPTY)
     private val shuffleCommand = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
     private var crossfade: CrossfadeManager? = null
+    private var widgetUpdater: WidgetUpdater? = null
     private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
@@ -120,6 +123,7 @@ class PlaybackService : MediaSessionService() {
         library = lib
 
         mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(openAppIntent())
             .setCallback(object : MediaSession.Callback {
                 // Sama seperti bawaan (semua pengontrol diterima), ditambah dua perintah kustom
                 override fun onConnect(
@@ -185,8 +189,26 @@ class PlaybackService : MediaSessionService() {
             }
         }
 
+        // Widget layar utama ikut lagu yang sedang diputar
+        widgetUpdater = WidgetUpdater(this, player, settingsScope).also { it.start() }
+
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
         crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter)
+    }
+
+    /**
+     * Dibuka saat notifikasi pemutar diketuk. Memakai launch intent app, sama seperti mengetuk
+     * ikonnya di launcher, jadi app yang masih hidup dibawa ke depan, bukan dibuka dobel.
+     */
+    private fun openAppIntent(): PendingIntent {
+        val launch = packageManager.getLaunchIntentForPackage(packageName)
+            ?: Intent(this, MainActivity::class.java)
+        return PendingIntent.getActivity(
+            this,
+            0,
+            launch,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
     }
 
     private fun customLayout(liked: Boolean): ImmutableList<CommandButton> = ImmutableList.of(
@@ -239,6 +261,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        widgetUpdater?.stop()
+        widgetUpdater = null
         settingsScope.cancel()
         crossfade?.release()
         crossfade = null

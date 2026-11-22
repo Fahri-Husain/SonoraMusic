@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">SonoraMusic</string>
+    <string name="widget_name">Sonora Vinyl</string>
+    <string name="widget_description">Piringan hitam dengan cover lagu yang sedang diputar</string>
 </resources>

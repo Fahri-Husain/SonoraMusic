@@ -47,7 +47,7 @@ fun rememberDominantColor(models: List<Any?>): Color? {
  * rona (hue), kelompok dengan bobot terbesar menang. Gambar yang nyaris hitam-putih tidak punya
  * kelompok berarti, jadi dipakai rata-rata seluruh piksel.
  */
-private suspend fun dominantColorOf(context: Context, models: List<Any?>): Color? {
+internal suspend fun dominantColorOf(context: Context, models: List<Any?>): Color? {
     val weight = FloatArray(HUE_BINS)
     val sumR = FloatArray(HUE_BINS)
     val sumG = FloatArray(HUE_BINS)
