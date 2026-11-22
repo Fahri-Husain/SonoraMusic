@@ -2,6 +2,7 @@ package com.fahrii.musicapp.widget
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.Log
 import androidx.core.graphics.drawable.toBitmap
 import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.updateAll
@@ -50,8 +51,15 @@ class WidgetUpdater(
         player.removeListener(this)
         job?.cancel()
         detachedScope.launch {
-            WidgetStore.clear(appContext)
-            SonoraWidget().updateAll(appContext)
+            // Widget hanya pelengkap: kegagalan di sini tidak boleh menjatuhkan aplikasi
+            try {
+                WidgetStore.clear(appContext)
+                SonoraWidget().updateAll(appContext)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.w(TAG, "Gagal mengosongkan widget", e)
+            }
         }
     }
 
@@ -70,17 +78,24 @@ class WidgetUpdater(
             // Pemutar hanya boleh dibaca dari thread utama; scope ini berjalan di sana
             val item = player.currentMediaItem
             val playing = player.playWhenReady &&
-                player.playbackState != Player.STATE_ENDED &&
-                player.playbackState != Player.STATE_IDLE
+                    player.playbackState != Player.STATE_ENDED &&
+                    player.playbackState != Player.STATE_IDLE
 
             withContext(Dispatchers.IO) {
-                if (!hasWidget()) return@withContext
-                if (item == null) {
-                    WidgetStore.clear(appContext)
-                } else {
-                    WidgetStore.write(appContext, snapshotOf(item, playing))
+                // Widget hanya pelengkap: kegagalan Glance/WorkManager tidak boleh menjatuhkan aplikasi
+                try {
+                    if (!hasWidget()) return@withContext
+                    if (item == null) {
+                        WidgetStore.clear(appContext)
+                    } else {
+                        WidgetStore.write(appContext, snapshotOf(item, playing))
+                    }
+                    SonoraWidget().updateAll(appContext)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Gagal memperbarui widget", e)
                 }
-                SonoraWidget().updateAll(appContext)
             }
         }
     }
@@ -137,6 +152,7 @@ class WidgetUpdater(
     }
 
     private companion object {
+        const val TAG = "WidgetUpdater"
         const val DEBOUNCE_MS = 200L
         const val COVER_SIZE_PX = 600
 

@@ -56,3 +56,21 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# ---------------------------------------------------------------------------
+# WorkManager + Room (ikut terbawa lewat androidx.glance:glance-appwidget).
+# Crash di build release saat app dibuka:
+# "Failed to create an instance of androidx.work.impl.WorkDatabase"
+# Room memuat kelas hasil generate (WorkDatabase_Impl) lewat refleksi berdasarkan nama,
+# jadi nama dan konstruktornya tidak boleh diacak/dibuang R8.
+# WorkManager diinisialisasi otomatis oleh androidx.startup sebelum Activity jalan.
+# ---------------------------------------------------------------------------
+-keep class androidx.work.impl.WorkDatabase_Impl { *; }
+-keep class * extends androidx.room.RoomDatabase { <init>(); }
+-keep class androidx.work.** { *; }
+-keep class androidx.room.** { *; }
+-keep class * extends androidx.work.ListenableWorker {
+    <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+-dontwarn androidx.work.**
+-dontwarn androidx.room.**
