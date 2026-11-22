@@ -11,6 +11,8 @@ import com.fahrii.musicapp.data.BackupManager
 import com.fahrii.musicapp.data.BackupOutcome
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.DownloadedSong
+import com.fahrii.musicapp.data.EqPreset
+import com.fahrii.musicapp.data.EqualizerState
 import com.fahrii.musicapp.data.LyricsFontSize
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +40,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
     val lyricsBlur: StateFlow<Boolean> = repo.lyricsBlur
     val sleepTimerEndAt: StateFlow<Long> = repo.sleepTimerEndAt
+    val equalizer: StateFlow<EqualizerState> = repo.equalizer
 
     /** Lagu yang sudah diunduh; jumlah dan ukurannya ditampilkan di bagian Unduhan dan Penyimpanan. */
     val downloaded: StateFlow<List<DownloadedSong>> = downloads.downloaded
@@ -65,6 +68,16 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setDownloadQuality(quality: AudioQuality) = repo.setDownloadQuality(quality)
 
     fun setSkipSilence(enabled: Boolean) = repo.setSkipSilence(enabled)
+
+    fun setEqualizerEnabled(enabled: Boolean) = repo.setEqualizerEnabled(enabled)
+
+    fun setEqualizerPreset(preset: EqPreset) = repo.setEqualizerPreset(preset)
+
+    fun setEqualizerBand(index: Int, db: Float) = repo.setEqualizerBand(index, db)
+
+    fun setBassBoost(strength: Int) = repo.setBassBoost(strength)
+
+    fun resetEqualizer() = repo.resetEqualizer()
 
     fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
 

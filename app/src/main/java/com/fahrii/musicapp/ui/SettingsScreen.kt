@@ -170,6 +170,8 @@ fun SettingsScreen(
     onStreamQualityChange: (AudioQuality) -> Unit,
     onDownloadQualityChange: (AudioQuality) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
+    equalizerSummary: String,
+    onOpenEqualizer: () -> Unit,
     shakeToSkip: Boolean,
     onShakeToSkipChange: (Boolean) -> Unit,
     lyricsFontSize: LyricsFontSize,
@@ -317,6 +319,13 @@ fun SettingsScreen(
                                     label = "Lewati bagian senyap"
                                 )
                             }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Equalizer,
+                            title = "Equalizer",
+                            onClick = onOpenEqualizer,
+                            trailing = { ValueWithChevron(equalizerSummary) }
                         )
                         SettingsDivider()
                         SettingsItem(
@@ -1004,7 +1013,7 @@ private fun CrossfadeSlider(value: Int, onValueChange: (Int) -> Unit, modifier: 
  * gelap. Area ketuknya diperluas ke ukuran minimal sentuhan tanpa mengubah tampilan.
  */
 @Composable
-private fun SonoraSwitch(
+internal fun SonoraSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     label: String,

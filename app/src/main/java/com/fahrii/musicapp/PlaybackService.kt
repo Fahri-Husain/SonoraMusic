@@ -21,6 +21,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
 import com.fahrii.musicapp.audio.DjFilterRenderersFactory
+import com.fahrii.musicapp.audio.EqualizerController
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.LibraryRepository
 import com.fahrii.musicapp.data.MusicRepository
@@ -53,6 +54,7 @@ class PlaybackService : MediaSessionService() {
     private val likeCommand = SessionCommand(ACTION_TOGGLE_LIKE, Bundle.EMPTY)
     private val shuffleCommand = SessionCommand(ACTION_TOGGLE_SHUFFLE, Bundle.EMPTY)
     private var crossfade: CrossfadeManager? = null
+    private var equalizer: EqualizerController? = null
     private var widgetUpdater: WidgetUpdater? = null
     private val settingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -192,8 +194,13 @@ class PlaybackService : MediaSessionService() {
         // Widget layar utama ikut lagu yang sedang diputar
         widgetUpdater = WidgetUpdater(this, player, settingsScope).also { it.start() }
 
+        // Equalizer + bass boost mengikuti Pengaturan. Didaftarkan juga ke pemutar kedua milik crossfade
+        // (lewat parameter di bawah) supaya lagu yang memudar keluar tetap terdengar sama.
+        val eqController = EqualizerController(settings, settingsScope).also { it.attach(player) }
+        equalizer = eqController
+
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
-        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter)
+        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter, eqController)
     }
 
     /**
@@ -266,6 +273,8 @@ class PlaybackService : MediaSessionService() {
         settingsScope.cancel()
         crossfade?.release()
         crossfade = null
+        equalizer?.release()
+        equalizer = null
         mediaSession?.run {
             player.release()
             release()

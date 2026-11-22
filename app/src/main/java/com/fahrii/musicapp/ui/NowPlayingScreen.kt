@@ -1651,7 +1651,13 @@ private fun ProgressBar(
     }
 }
 
-/** Tombol bulat transparan seperti di desain referensi. */
+/**
+ * Tombol bulat di layar Sedang Diputar (kembali, suka, dan tiga tombol di tepi cover).
+ *
+ * Latarnya hitam transparan, bukan putih: tombol di tepi cover separuhnya berada di atas gambar
+ * sampul yang bisa sangat terang, dan ikon putih di atas putih transparan jadi tidak terbaca.
+ * Garis tepi putih tipis menjaga bentuk tombol tetap terlihat di atas sampul yang gelap.
+ */
 @Composable
 private fun RoundButton(
     onClick: () -> Unit,
@@ -1662,7 +1668,8 @@ private fun RoundButton(
         modifier = modifier
             .size(44.dp)
             .clip(CircleShape)
-            .background(Color.White.copy(alpha = 0.14f))
+            .background(Color.Black.copy(alpha = 0.45f))
+            .border(1.dp, Color.White.copy(alpha = 0.16f), CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

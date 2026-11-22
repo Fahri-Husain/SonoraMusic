@@ -1,6 +1,8 @@
 package com.fahrii.musicapp.data
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,12 +79,55 @@ class SettingsRepository private constructor(context: Context) {
     /** Baris lirik yang jauh dari baris aktif diburamkan (gaya Apple Music). Bawaan: nyala. */
     val lyricsBlur: StateFlow<Boolean> = _lyricsBlur.asStateFlow()
 
+    private val _equalizer = MutableStateFlow(readEqualizer())
+    /**
+     * Equalizer + bass boost. Dibaca PlaybackService (EqualizerController) dan langsung diterapkan
+     * ke pemutar, termasuk saat pita digeser ketika lagu sedang diputar. Bawaan: mati.
+     */
+    val equalizer: StateFlow<EqualizerState> = _equalizer.asStateFlow()
+
+    // Menggeser pita memicu puluhan perubahan per detik; tulis ke disk sekali setelah berhenti
+    private val persistHandler = Handler(Looper.getMainLooper())
+    private val persistEqualizerTask = Runnable { writeEqualizer(_equalizer.value) }
+
     private val _sleepTimerEndAt = MutableStateFlow(0L)
     /**
      * Kapan timer tidur habis (epoch ms); 0 = timer mati. Sengaja tidak disimpan ke SharedPreferences:
      * timer hanya berlaku selama aplikasi hidup, dan PlaybackService yang menjeda pemutar saat habis.
      */
     val sleepTimerEndAt: StateFlow<Long> = _sleepTimerEndAt.asStateFlow()
+
+    private fun readEqualizer(): EqualizerState {
+        val preset = runCatching { EqPreset.valueOf(prefs.getString(KEY_EQ_PRESET, null) ?: "") }
+            .getOrDefault(EqPreset.FLAT)
+        val saved = prefs.getString(KEY_EQ_GAINS, null)
+            ?.split(',')
+            ?.mapNotNull { it.toFloatOrNull() }
+            ?.takeIf { it.size == EqualizerBands.COUNT }
+        val gains = (if (preset == EqPreset.CUSTOM) saved else preset.gainsDb)
+            ?: EqPreset.FLAT.gainsDb
+        return EqualizerState(
+            enabled = prefs.getBoolean(KEY_EQ_ENABLED, false),
+            preset = if (preset == EqPreset.CUSTOM && saved == null) EqPreset.FLAT else preset,
+            gainsDb = gains.map { it.coerceIn(EqualizerBands.MIN_DB, EqualizerBands.MAX_DB) },
+            bassBoost = prefs.getInt(KEY_EQ_BASS, 0).coerceIn(0, EqualizerState.MAX_BASS_BOOST)
+        )
+    }
+
+    private fun writeEqualizer(state: EqualizerState) {
+        prefs.edit()
+            .putBoolean(KEY_EQ_ENABLED, state.enabled)
+            .putString(KEY_EQ_PRESET, state.preset.name)
+            .putString(KEY_EQ_GAINS, state.gainsDb.joinToString(","))
+            .putInt(KEY_EQ_BASS, state.bassBoost)
+            .apply()
+    }
+
+    private fun updateEqualizer(transform: (EqualizerState) -> EqualizerState) {
+        _equalizer.value = transform(_equalizer.value)
+        persistHandler.removeCallbacks(persistEqualizerTask)
+        persistHandler.postDelayed(persistEqualizerTask, EQ_PERSIST_DELAY_MS)
+    }
 
     private fun readQuality(key: String): AudioQuality =
         runCatching { AudioQuality.valueOf(prefs.getString(key, null) ?: "") }
@@ -122,6 +167,29 @@ class SettingsRepository private constructor(context: Context) {
         _lyricsBlur.value = enabled
         prefs.edit().putBoolean(KEY_LYRICS_BLUR, enabled).apply()
     }
+
+    fun setEqualizerEnabled(enabled: Boolean) = updateEqualizer { it.copy(enabled = enabled) }
+
+    /** Pilih preset; pita ikut berubah ke nilai preset. */
+    fun setEqualizerPreset(preset: EqPreset) = updateEqualizer {
+        if (preset == EqPreset.CUSTOM) it.copy(preset = preset)
+        else it.copy(preset = preset, gainsDb = preset.gainsDb)
+    }
+
+    /** Geser satu pita ke [db]; preset otomatis menjadi Kustom. */
+    fun setEqualizerBand(index: Int, db: Float) = updateEqualizer { state ->
+        if (index !in 0 until EqualizerBands.COUNT) return@updateEqualizer state
+        val gains = state.gainsDb.toMutableList()
+        gains[index] = db.coerceIn(EqualizerBands.MIN_DB, EqualizerBands.MAX_DB)
+        state.copy(preset = EqPreset.CUSTOM, gainsDb = gains)
+    }
+
+    fun setBassBoost(strength: Int) =
+        updateEqualizer { it.copy(bassBoost = strength.coerceIn(0, EqualizerState.MAX_BASS_BOOST)) }
+
+    /** Kembalikan semua pita ke Flat dan matikan bass boost (status nyala/mati tidak berubah). */
+    fun resetEqualizer() =
+        updateEqualizer { it.copy(preset = EqPreset.FLAT, gainsDb = EqPreset.FLAT.gainsDb, bassBoost = 0) }
 
     /** Nyalakan timer tidur [minutes] menit dari sekarang. */
     fun startSleepTimer(minutes: Int) {
@@ -179,6 +247,11 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
         private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"
         private const val KEY_LYRICS_BLUR = "lyrics_blur"
+        private const val KEY_EQ_ENABLED = "eq_enabled"
+        private const val KEY_EQ_PRESET = "eq_preset"
+        private const val KEY_EQ_GAINS = "eq_gains"
+        private const val KEY_EQ_BASS = "eq_bass_boost"
+        private const val EQ_PERSIST_DELAY_MS = 300L
 
         @Volatile
         private var instance: SettingsRepository? = null

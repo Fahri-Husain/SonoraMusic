@@ -17,6 +17,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.fahrii.musicapp.audio.BiquadFilter
 import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
 import com.fahrii.musicapp.audio.DjFilterRenderersFactory
+import com.fahrii.musicapp.audio.EqualizerController
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlin.math.abs
 import kotlin.math.cos
@@ -62,7 +63,9 @@ class CrossfadeManager(
     private val player: ExoPlayer,
     private val dataSourceFactory: DataSource.Factory,
     private val settings: SettingsRepository,
-    private val djFilter: CrossfadeFilterAudioProcessor
+    private val djFilter: CrossfadeFilterAudioProcessor,
+    // Equalizer pemutar utama; pemutar kedua didaftarkan juga supaya suaranya tidak loncat saat fade
+    private val equalizer: EqualizerController? = null
 ) {
     private enum class Phase { IDLE, SYNC, HANDOFF, FADING }
 
@@ -342,6 +345,7 @@ class CrossfadeManager(
             )
             .build()
         p.volume = 0f
+        equalizer?.attach(p)
         p.setMediaItem(item, startMs)
         p.playWhenReady = false
         p.prepare()
@@ -590,6 +594,7 @@ class CrossfadeManager(
     }
 
     private fun releaseTail() {
+        tail?.let { equalizer?.detach(it) }
         tail?.release()
         tail = null
         tailFilter?.enabled = false

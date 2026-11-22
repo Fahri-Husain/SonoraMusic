@@ -80,6 +80,7 @@ private const val ROUTE_TRENDING = "trending"
 private const val ROUTE_GENRE = "genre?name={name}&query={query}&accent={accent}"
 private const val ROUTE_GENRE_SONGS = "genre_songs"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_EQUALIZER = "equalizer"
 
 /** Lama geser Beranda <-> Koleksi (ms). */
 internal const val TAB_SLIDE_MS = 350
@@ -499,6 +500,7 @@ fun AppRoot(
                         val cacheBytes by settingsViewModel.cacheBytes.collectAsState()
                         val backupBusy by settingsViewModel.backupBusy.collectAsState()
                         val backupOutcome by settingsViewModel.backupOutcome.collectAsState()
+                        val equalizer by settingsViewModel.equalizer.collectAsState()
                         Box(Modifier.fillMaxSize()) {
                             SettingsScreen(
                                 onBack = { navController.popBackStack() },
@@ -514,6 +516,8 @@ fun AppRoot(
                                 onStreamQualityChange = settingsViewModel::setStreamQuality,
                                 onDownloadQualityChange = settingsViewModel::setDownloadQuality,
                                 onSkipSilenceChange = settingsViewModel::setSkipSilence,
+                                equalizerSummary = if (equalizer.enabled) equalizer.preset.label else "Mati",
+                                onOpenEqualizer = { navController.navigate(ROUTE_EQUALIZER) },
                                 shakeToSkip = shakeToSkip,
                                 onShakeToSkipChange = settingsViewModel::setShakeToSkip,
                                 lyricsFontSize = lyricsFontSize,
@@ -536,6 +540,22 @@ fun AppRoot(
                                 onExportBackup = settingsViewModel::exportBackup,
                                 onImportBackup = settingsViewModel::importBackup,
                                 onDismissBackupOutcome = settingsViewModel::dismissBackupOutcome
+                            )
+                        }
+                    }
+
+                    composable(ROUTE_EQUALIZER) {
+                        val settingsViewModel: SettingsViewModel = viewModel()
+                        val equalizer by settingsViewModel.equalizer.collectAsState()
+                        Box(Modifier.fillMaxSize()) {
+                            EqualizerScreen(
+                                state = equalizer,
+                                onBack = { navController.popBackStack() },
+                                onEnabledChange = settingsViewModel::setEqualizerEnabled,
+                                onPresetSelect = settingsViewModel::setEqualizerPreset,
+                                onBandChange = settingsViewModel::setEqualizerBand,
+                                onBassBoostChange = settingsViewModel::setBassBoost,
+                                onReset = settingsViewModel::resetEqualizer
                             )
                         }
                     }

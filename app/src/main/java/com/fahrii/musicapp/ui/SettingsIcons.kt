@@ -24,6 +24,15 @@ internal object SettingsIcons {
         line("Sliders", "M4 7h10M18 7h2M4 17h2M10 17h10", circle(16f, 7f, 2f), circle(8f, 17f, 2f))
     }
 
+    /** Tiga tuas vertikal dengan knob: Equalizer. */
+    val Equalizer: ImageVector by lazy {
+        line(
+            "Equalizer",
+            "M6 4v6M6 14v6M12 4v2M12 10v10M18 4v8M18 16v4",
+            circle(6f, 12f, 2f), circle(12f, 8f, 2f), circle(18f, 14f, 2f)
+        )
+    }
+
     /** Segitiga play dengan garis di ujung: Lewati bagian senyap. */
     val SkipSilence: ImageVector by lazy { line("SkipSilence", "M6 6l9 6-9 6z M19 6v12") }
 
