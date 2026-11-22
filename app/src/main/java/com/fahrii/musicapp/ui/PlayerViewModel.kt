@@ -341,7 +341,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
      * karena itu artinya pengguna ingin mengulang antreannya.
      */
     private fun maybeAutoplay(player: Player) {
-        if (!queueAllowsAutoplay || !settings.autoplay.value) return
+        // Putar otomatis selalu aktif; satu-satunya pengecualian adalah antrean yang melarangnya
+        // (playlist buatan pengguna).
+        if (!queueAllowsAutoplay) return
         if (player.repeatMode != Player.REPEAT_MODE_OFF || player.hasNextMediaItem()) return
         val current = player.currentMediaItem ?: return
         if (autoplayRequestedFor == current.mediaId) return

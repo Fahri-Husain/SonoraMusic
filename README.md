@@ -196,9 +196,9 @@ Rekap musik pribadi, mirip *Wrapped* tetapi **tersedia setiap bulan**:
 - Kualitas streaming dan kualitas unduhan terpisah: **Rendah (~50 kbps)**, **Sedang (~128 kbps)**, **Tinggi (terbaik yang tersedia)**.
 
 **Pemutaran**
-- **Crossfade** – lagu saling memudar saat berganti, durasi bisa diatur lewat slider.
+- **Crossfade** – lagu saling memudar saat berganti, durasi bisa diatur lewat slider. Saat menyala, opsi **Transisi ala DJ** muncul dan langsung aktif (bisa dimatikan); saat Crossfade dimatikan, opsi itu hilang.
 - **Lewati bagian senyap** – loncat otomatis saat ada jeda hening di dalam lagu.
-- **Jeda saat headset dicabut** – musik berhenti otomatis saat headset/Bluetooth terputus.
+- **Selalu aktif (tanpa pengaturan)** – putar otomatis saat antrean habis, ketuk dua kali cover untuk favorit, dan jeda otomatis saat headset dicabut atau Bluetooth terputus.
 - **Timer tidur** – musik berhenti otomatis setelah 15, 30, 45, 60, atau 90 menit.
 - **AutoMix** – transisi ala DJ yang menyesuaikan tempo *(segera hadir)*.
 

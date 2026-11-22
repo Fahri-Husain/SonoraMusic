@@ -41,7 +41,8 @@ class SettingsRepository private constructor(context: Context) {
     private val _crossfadeDjMode = MutableStateFlow(prefs.getBoolean(KEY_CROSSFADE_DJ_MODE, true))
     /**
      * Transisi ala DJ: selama crossfade, lagu lama diredam (low-pass) dan lagu baru dibuka (high-pass).
-     * Bawaan: nyala, sama seperti SimpMusic. Hanya berlaku kalau crossfade menyala.
+     * Bawaan: nyala, sama seperti SimpMusic. Hanya berlaku kalau crossfade menyala, dan otomatis
+     * kembali nyala setiap kali crossfade dinyalakan lagi (lihat [setCrossfadeEnabled]).
      */
     val crossfadeDjMode: StateFlow<Boolean> = _crossfadeDjMode.asStateFlow()
 
@@ -57,10 +58,6 @@ class SettingsRepository private constructor(context: Context) {
     /** Lewati bagian senyap di dalam lagu. Bawaan: mati. */
     val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
-    private val _pauseOnUnplug = MutableStateFlow(prefs.getBoolean(KEY_PAUSE_ON_UNPLUG, true))
-    /** Jeda otomatis saat headset dicabut atau Bluetooth terputus. Bawaan: nyala. */
-    val pauseOnUnplug: StateFlow<Boolean> = _pauseOnUnplug.asStateFlow()
-
     private val _downloadWifiOnly = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_WIFI_ONLY, false))
     /** Unduhan baru hanya boleh jalan lewat Wi-Fi (bukan data seluler). Bawaan: mati. */
     val downloadWifiOnly: StateFlow<Boolean> = _downloadWifiOnly.asStateFlow()
@@ -68,17 +65,6 @@ class SettingsRepository private constructor(context: Context) {
     private val _shakeToSkip = MutableStateFlow(prefs.getBoolean(KEY_SHAKE_TO_SKIP, false))
     /** Goyang ponsel untuk lagu berikutnya (hanya saat aplikasi terbuka). Bawaan: mati. */
     val shakeToSkip: StateFlow<Boolean> = _shakeToSkip.asStateFlow()
-
-    private val _autoplay = MutableStateFlow(prefs.getBoolean(KEY_AUTOPLAY, true))
-    /**
-     * Saat antrean habis, otomatis lanjut ke lagu yang mirip dengan lagu terakhir. Tidak berlaku
-     * untuk playlist buatan sendiri. Bawaan: nyala.
-     */
-    val autoplay: StateFlow<Boolean> = _autoplay.asStateFlow()
-
-    private val _doubleTapLike = MutableStateFlow(prefs.getBoolean(KEY_DOUBLE_TAP_LIKE, true))
-    /** Ketuk dua kali pada cover di halaman Sedang Diputar untuk menyukai lagu. Bawaan: nyala. */
-    val doubleTapLike: StateFlow<Boolean> = _doubleTapLike.asStateFlow()
 
     private val _lyricsFontSize = MutableStateFlow(
         runCatching { LyricsFontSize.valueOf(prefs.getString(KEY_LYRICS_FONT_SIZE, null) ?: "") }
@@ -117,11 +103,6 @@ class SettingsRepository private constructor(context: Context) {
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
     }
 
-    fun setPauseOnUnplug(enabled: Boolean) {
-        _pauseOnUnplug.value = enabled
-        prefs.edit().putBoolean(KEY_PAUSE_ON_UNPLUG, enabled).apply()
-    }
-
     fun setDownloadWifiOnly(enabled: Boolean) {
         _downloadWifiOnly.value = enabled
         prefs.edit().putBoolean(KEY_DOWNLOAD_WIFI_ONLY, enabled).apply()
@@ -130,16 +111,6 @@ class SettingsRepository private constructor(context: Context) {
     fun setShakeToSkip(enabled: Boolean) {
         _shakeToSkip.value = enabled
         prefs.edit().putBoolean(KEY_SHAKE_TO_SKIP, enabled).apply()
-    }
-
-    fun setAutoplay(enabled: Boolean) {
-        _autoplay.value = enabled
-        prefs.edit().putBoolean(KEY_AUTOPLAY, enabled).apply()
-    }
-
-    fun setDoubleTapLike(enabled: Boolean) {
-        _doubleTapLike.value = enabled
-        prefs.edit().putBoolean(KEY_DOUBLE_TAP_LIKE, enabled).apply()
     }
 
     fun setLyricsFontSize(size: LyricsFontSize) {
@@ -165,7 +136,14 @@ class SettingsRepository private constructor(context: Context) {
     fun crossfadeMs(): Long =
         if (_crossfadeEnabled.value) _crossfadeSeconds.value * 1000L else 0L
 
+    /**
+     * Menyalakan atau mematikan crossfade. Setiap kali crossfade dinyalakan (dari mati), Transisi
+     * ala DJ ikut diaktifkan otomatis; pengguna tetap bisa mematikannya sendiri sesudahnya.
+     * Saat crossfade dimatikan, baris Transisi ala DJ disembunyikan di Pengaturan dan efeknya tidak
+     * berlaku (lihat [crossfadeDjMode]).
+     */
     fun setCrossfadeEnabled(enabled: Boolean) {
+        if (enabled && !_crossfadeEnabled.value) setCrossfadeDjMode(true)
         _crossfadeEnabled.value = enabled
         prefs.edit().putBoolean(KEY_CROSSFADE_ENABLED, enabled).apply()
     }
@@ -197,11 +175,8 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_STREAM_QUALITY = "stream_quality"
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_SKIP_SILENCE = "skip_silence"
-        private const val KEY_PAUSE_ON_UNPLUG = "pause_on_unplug"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
         private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
-        private const val KEY_AUTOPLAY = "autoplay"
-        private const val KEY_DOUBLE_TAP_LIKE = "double_tap_like"
         private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"
         private const val KEY_LYRICS_BLUR = "lyrics_blur"
 

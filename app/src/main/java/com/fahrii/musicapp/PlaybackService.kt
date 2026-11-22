@@ -104,10 +104,8 @@ class PlaybackService : MediaSessionService() {
             settings.skipSilence.collect { player.skipSilenceEnabled = it }
         }
 
-        // Jeda otomatis saat headset dicabut mengikuti Pengaturan
-        settingsScope.launch {
-            settings.pauseOnUnplug.collect { player.setHandleAudioBecomingNoisy(it) }
-        }
+        // Jeda otomatis saat headset dicabut atau Bluetooth terputus: selalu aktif, tidak ada pengaturannya
+        player.setHandleAudioBecomingNoisy(true)
 
         // Timer tidur: saat waktunya habis, pemutar dijeda. collectLatest membatalkan hitungan
         // lama otomatis kalau timer diganti atau dimatikan.

@@ -201,8 +201,6 @@ fun NowPlayingScreen(
     }
 
     val isLiked = library.liked.any { it.url == song.url }
-    val doubleTapLikeEnabled by SettingsRepository.getInstance(LocalContext.current)
-        .doubleTapLike.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
@@ -502,11 +500,10 @@ fun NowPlayingScreen(
                 var coverDragX by remember { mutableFloatStateOf(0f) }
                 var committedFromUrl by remember { mutableStateOf<String?>(null) }
 
-                // Ketuk dua kali cover = suka. Nilai terbaru dibaca lewat rememberUpdatedState karena
-                // pointerInput(Unit) tidak dibuat ulang saat lagu atau pengaturan berubah.
+                // Ketuk dua kali cover = suka (selalu aktif). Nilai terbaru dibaca lewat
+                // rememberUpdatedState karena pointerInput(Unit) tidak dibuat ulang saat lagu berubah.
                 val currentSong by rememberUpdatedState(song)
                 val currentIsLiked by rememberUpdatedState(isLiked)
-                val currentDoubleTapEnabled by rememberUpdatedState(doubleTapLikeEnabled)
                 val haptic = LocalHapticFeedback.current
                 var heartBurst by remember { mutableStateOf(HeartBurst()) }
                 var swipeCommitting by remember { mutableStateOf(false) }
@@ -526,7 +523,6 @@ fun NowPlayingScreen(
                         .size(side)
                         .pointerInput(Unit) {
                             detectTapGestures(onDoubleTap = {
-                                if (!currentDoubleTapEnabled) return@detectTapGestures
                                 // Belum disukai -> jadi favorit (hati utuh); sudah disukai -> batal
                                 // favorit (hati retak terbelah dua)
                                 val willLike = !currentIsLiked

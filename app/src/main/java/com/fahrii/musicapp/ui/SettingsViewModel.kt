@@ -33,11 +33,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val streamQuality: StateFlow<AudioQuality> = repo.streamQuality
     val downloadQuality: StateFlow<AudioQuality> = repo.downloadQuality
     val skipSilence: StateFlow<Boolean> = repo.skipSilence
-    val pauseOnUnplug: StateFlow<Boolean> = repo.pauseOnUnplug
     val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
     val shakeToSkip: StateFlow<Boolean> = repo.shakeToSkip
-    val autoplay: StateFlow<Boolean> = repo.autoplay
-    val doubleTapLike: StateFlow<Boolean> = repo.doubleTapLike
     val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
     val lyricsBlur: StateFlow<Boolean> = repo.lyricsBlur
     val sleepTimerEndAt: StateFlow<Long> = repo.sleepTimerEndAt
@@ -69,15 +66,9 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setSkipSilence(enabled: Boolean) = repo.setSkipSilence(enabled)
 
-    fun setPauseOnUnplug(enabled: Boolean) = repo.setPauseOnUnplug(enabled)
-
     fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
 
     fun setShakeToSkip(enabled: Boolean) = repo.setShakeToSkip(enabled)
-
-    fun setAutoplay(enabled: Boolean) = repo.setAutoplay(enabled)
-
-    fun setDoubleTapLike(enabled: Boolean) = repo.setDoubleTapLike(enabled)
 
     fun setLyricsFontSize(size: LyricsFontSize) = repo.setLyricsFontSize(size)
 

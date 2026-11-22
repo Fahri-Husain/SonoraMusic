@@ -490,10 +490,7 @@ fun AppRoot(
                         val streamQuality by settingsViewModel.streamQuality.collectAsState()
                         val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
-                        val pauseOnUnplug by settingsViewModel.pauseOnUnplug.collectAsState()
                         val shakeToSkip by settingsViewModel.shakeToSkip.collectAsState()
-                        val autoplay by settingsViewModel.autoplay.collectAsState()
-                        val doubleTapLike by settingsViewModel.doubleTapLike.collectAsState()
                         val lyricsFontSize by settingsViewModel.lyricsFontSize.collectAsState()
                         val lyricsBlur by settingsViewModel.lyricsBlur.collectAsState()
                         val sleepTimerEndAt by settingsViewModel.sleepTimerEndAt.collectAsState()
@@ -517,14 +514,8 @@ fun AppRoot(
                                 onStreamQualityChange = settingsViewModel::setStreamQuality,
                                 onDownloadQualityChange = settingsViewModel::setDownloadQuality,
                                 onSkipSilenceChange = settingsViewModel::setSkipSilence,
-                                pauseOnUnplug = pauseOnUnplug,
-                                onPauseOnUnplugChange = settingsViewModel::setPauseOnUnplug,
                                 shakeToSkip = shakeToSkip,
                                 onShakeToSkipChange = settingsViewModel::setShakeToSkip,
-                                autoplay = autoplay,
-                                onAutoplayChange = settingsViewModel::setAutoplay,
-                                doubleTapLike = doubleTapLike,
-                                onDoubleTapLikeChange = settingsViewModel::setDoubleTapLike,
                                 lyricsFontSize = lyricsFontSize,
                                 onLyricsFontSizeChange = settingsViewModel::setLyricsFontSize,
                                 lyricsBlur = lyricsBlur,
