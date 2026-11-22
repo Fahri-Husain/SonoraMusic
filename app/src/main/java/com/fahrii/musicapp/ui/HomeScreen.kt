@@ -28,10 +28,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.draw.drawWithContent
@@ -119,6 +123,7 @@ fun greetingForHour(hour: Int): String = when (hour) {
 
 private fun currentHour(): Int = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -137,8 +142,25 @@ fun HomeScreen(
     val artists by viewModel.artists.collectAsState()
     val subscribers by viewModel.subscribers.collectAsState()
     val glowPosition = rememberGlowPosition()
+    val pullState = rememberPullToRefreshState()
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // Tarik daftar ke bawah saat sudah di paling atas: ikon refresh muncul, lalu Beranda dimuat ulang
+    PullToRefreshBox(
+        isRefreshing = state.isRefreshing,
+        onRefresh = viewModel::pullRefresh,
+        state = pullState,
+        modifier = modifier.fillMaxSize(),
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullState,
+                isRefreshing = state.isRefreshing,
+                // Turun di bawah header Beranda supaya tidak tertutup
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
+                containerColor = Sonora.SurfaceHigh,
+                color = Sonora.Accent
+            )
+        }
+    ) {
         // Cahaya gradasi di atas beranda: warnanya berganti pelan dan mulus, tidak ikut ter-scroll
         HomeGlow(position = glowPosition)
 
@@ -585,10 +607,10 @@ private fun SongCardRow(
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        if (songs.isEmpty()) {
-            // Skeleton selagi memuat
-            if (loading) items(4) { SongCardSkeleton() }
-        } else {
+        if (loading) {
+            // Skeleton selagi memuat, juga saat dimuat ulang walau daftar lama masih ada
+            items(4) { SongCardSkeleton() }
+        } else if (songs.isNotEmpty()) {
             itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
                 SongCard(
                     song = song,

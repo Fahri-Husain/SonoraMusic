@@ -1,6 +1,7 @@
 package com.fahrii.musicapp.ui
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.ArtistNames
@@ -40,6 +41,8 @@ data class HomeUiState(
     val newReleases: List<Song> = emptyList(),
     val trending: List<Song> = emptyList(),
     val isLoading: Boolean = true,
+    // True selama tarik-untuk-muat-ulang berjalan; isi Beranda tetap terlihat (tanpa skeleton)
+    val isRefreshing: Boolean = false,
     // True selama kartu Pilihan Cepat masih diambil; dipakai untuk menampilkan skeleton
     val quickPicksLoading: Boolean = true,
     val error: String? = null
@@ -47,6 +50,9 @@ data class HomeUiState(
 
 // Jumlah lagu per baris Beranda yang tampil (sama dengan HOME_ROW_LIMIT di HomeScreen)
 private const val HOME_PREFETCH_COUNT = 10
+
+// Lama minimum tarik-untuk-muat-ulang berjalan (ms), supaya animasinya sempat terlihat
+private const val PULL_REFRESH_MIN_MS = 1_000L
 
 // Jumlah kartu per baris yang langsung terlihat tanpa menggeser
 private const val HOME_VISIBLE_COUNT = 4
@@ -74,9 +80,23 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         refresh()
     }
 
-    fun refresh() {
+    fun refresh() = load(pull = false)
+
+    /**
+     * Tarik-untuk-muat-ulang di Beranda. Sama seperti [refresh] (skeleton tampil selagi memuat),
+     * tapi ikon tarik tetap berputar sampai selesai, ada waktu tampil minimum supaya animasinya
+     * terlihat walau datanya cepat, dan kalau pengambilan gagal daftar lama tidak dikosongkan.
+     */
+    fun pullRefresh() {
+        val s = _state.value
+        if (s.isLoading || s.isRefreshing) return
+        load(pull = true)
+    }
+
+    private fun load(pull: Boolean) {
         viewModelScope.launch {
-            _state.update { it.copy(isLoading = true, error = null) }
+            val startedAt = SystemClock.elapsedRealtime()
+            _state.update { it.copy(isLoading = true, isRefreshing = pull, error = null) }
 
             val releases = async { runCatching { ChartRepository.newReleases() } }
             val trending = async { runCatching { ChartRepository.trendingTracks() } }
@@ -90,8 +110,8 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 loadSubscribers(top)
             }
 
-            val releaseSongs = r.getOrDefault(emptyList())
-            val trendingSongs = t.getOrDefault(emptyList())
+            val releaseSongs = r.getOrNull() ?: if (pull) _state.value.newReleases else emptyList()
+            val trendingSongs = t.getOrNull() ?: if (pull) _state.value.trending else emptyList()
             // Lengkapi nama artis kolaborasi untuk kartu yang langsung terlihat di layar sebelum daftar
             // muncul, supaya namanya tidak berubah di depan mata. Sisanya (di luar layar, perlu digeser)
             // dilengkapi di latar belakang tanpa menahan tampilan.
@@ -101,11 +121,18 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             ArtistNames.prefetch(visible, timeoutMs = 6_000)
             viewModelScope.launch { ArtistNames.prefetch(offscreen, timeoutMs = 60_000) }
 
+            if (pull) {
+                // Datanya bisa datang sangat cepat; tahan sebentar supaya skeleton dan ikon terlihat
+                val remaining = PULL_REFRESH_MIN_MS - (SystemClock.elapsedRealtime() - startedAt)
+                if (remaining > 0) delay(remaining)
+            }
+
             _state.update {
                 it.copy(
                     newReleases = releaseSongs,
                     trending = trendingSongs,
                     isLoading = false,
+                    isRefreshing = false,
                     error = if (r.isFailure && t.isFailure) {
                         "Gagal memuat. Periksa koneksi internet."
                     } else {
