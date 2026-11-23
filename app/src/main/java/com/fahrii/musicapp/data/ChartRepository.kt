@@ -57,7 +57,7 @@ object ChartRepository {
     suspend fun newReleases(limit: Int = 50, maxAgeDays: Long = 45): List<Song> =
         withContext(Dispatchers.IO) {
             val today = java.time.LocalDate.now()
-            val from = today.minusDays(maxAgeDays).toString()   // format yyyy-MM-dd
+            val from = today.minusDays(maxAgeDays).toString()
             val to = today.toString()
 
             val artists = getData("$BASE/chart/0/artists?limit=25")
@@ -67,7 +67,6 @@ object ChartRepository {
                         runCatching {
                             getData("$BASE/artist/${artist.optLong("id")}/albums?limit=10")
                         }.getOrDefault(emptyList()).onEach { album ->
-                            // endpoint ini nggak menyertakan nama artis, jadi diisi manual
                             album.put("artist", JSONObject().put("name", artist.optString("name")))
                         }
                     }
@@ -94,6 +93,28 @@ object ChartRepository {
         }
     }
 
+    data class ArtistRef(val id: Long, val name: String)
+
+    suspend fun findArtist(name: String): ArtistRef? = withContext(Dispatchers.IO) {
+        val wanted = name.trim().removeSuffix("- Topic").trim()
+        if (wanted.isBlank()) return@withContext null
+        getData("$BASE/search/artist?q=" + Uri.encode(wanted) + "&limit=5")
+            .firstOrNull { it.optString("name").trim().equals(wanted, ignoreCase = true) }
+            ?.let { ArtistRef(it.optLong("id"), it.optString("name")) }
+    }
+
+    suspend fun relatedArtists(artistId: Long, limit: Int = 5): List<ArtistRef> = withContext(Dispatchers.IO) {
+        getData("$BASE/artist/$artistId/related?limit=$limit").mapNotNull { o ->
+            val id = o.optLong("id")
+            val name = o.optString("name")
+            if (id > 0 && name.isNotBlank()) ArtistRef(id, name) else null
+        }
+    }
+
+    suspend fun artistTopTracks(artistId: Long, limit: Int = 15): List<Song> = withContext(Dispatchers.IO) {
+        getData("$BASE/artist/$artistId/top?limit=$limit").mapNotNull { it.toTrackSong() }
+    }
+
     private fun getData(url: String): List<JSONObject> {
         val request = Request.Builder()
             .url(url)
@@ -104,7 +125,6 @@ object ChartRepository {
             if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
 
             val root = JSONObject(response.body?.string().orEmpty())
-            // Deezer kadang membalas status 200 tapi isinya {"error": {...}}
             if (root.has("error")) {
                 throw IOException(root.optJSONObject("error")?.optString("message") ?: "Deezer error")
             }
@@ -141,8 +161,6 @@ object ChartRepository {
         val cover = optString("cover_xl")
             .ifBlank { optString("cover_big") }
             .ifBlank { optString("cover_medium") }
-        // Single berisi satu lagu, jadi langsung diputar. Album dan EP berisi banyak lagu: buka
-        // halaman albumnya. Kalau jenisnya tidak diketahui, diperlakukan seperti single (perilaku lama).
         val type = optString("record_type").lowercase()
         val isAlbum = type.isNotBlank() && type != "single"
         return Song(

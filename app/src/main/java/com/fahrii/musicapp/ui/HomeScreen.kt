@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -98,7 +99,6 @@ private const val HOME_ROW_LIMIT = 10
 
 private data class Genre(val name: String, val query: String, val accent: Color)
 
-// Urutan ini mengisi grid kolom demi kolom (3 baris per kolom), sama seperti di desain
 private val genres = listOf(
     Genre("Pop", "pop hits", Color(0xFF7FB8FF)),
     Genre("K-Pop", "K-Pop hits", Color(0xFFFF7A9C)),
@@ -132,6 +132,7 @@ fun HomeScreen(
     onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit,
     onArtistClick: (String) -> Unit,
     onPickClick: (Int) -> Unit,
+    onSeeAllForYou: () -> Unit,
     onSeeAllNewReleases: () -> Unit,
     onSeeAllTrending: () -> Unit,
     listState: LazyListState,
@@ -143,8 +144,20 @@ fun HomeScreen(
     val subscribers by viewModel.subscribers.collectAsState()
     val glowPosition = rememberGlowPosition()
     val pullState = rememberPullToRefreshState()
+    val quickPicksRowState = rememberLazyListState()
+    val forYouRowState = rememberLazyListState()
+    val newReleasesRowState = rememberLazyListState()
+    val trendingRowState = rememberLazyListState()
 
-    // Tarik daftar ke bawah saat sudah di paling atas: ikon refresh muncul, lalu Beranda dimuat ulang
+    LaunchedEffect(state.isRefreshing) {
+        if (state.isRefreshing) {
+            quickPicksRowState.scrollToItem(0)
+            forYouRowState.scrollToItem(0)
+            newReleasesRowState.scrollToItem(0)
+            trendingRowState.scrollToItem(0)
+        }
+    }
+
     PullToRefreshBox(
         isRefreshing = state.isRefreshing,
         onRefresh = viewModel::pullRefresh,
@@ -154,14 +167,12 @@ fun HomeScreen(
             PullToRefreshDefaults.Indicator(
                 state = pullState,
                 isRefreshing = state.isRefreshing,
-                // Turun di bawah header Beranda supaya tidak tertutup
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
                 containerColor = Sonora.SurfaceHigh,
                 color = Sonora.Accent
             )
         }
     ) {
-        // Cahaya gradasi di atas beranda: warnanya berganti pelan dan mulus, tidak ikut ter-scroll
         HomeGlow(position = glowPosition)
 
         LazyColumn(
@@ -191,14 +202,13 @@ fun HomeScreen(
                 Column {
                     SectionTitle("Pilihan Cepat")
                     LazyRow(
+                        state = quickPicksRowState,
                         contentPadding = PaddingValues(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         itemsIndexed(state.quickPicks, key = { _, pick -> pick.label }) { index, pick ->
                             QuickPickCard(
                                 pick = pick,
-                                // Skeleton selama Beranda masih memuat (sama dengan Rilis Baru dan Lagu Trending),
-                                // atau kalau kartu ini memang belum punya lagu sama sekali
                                 loading = state.isLoading || (state.quickPicksLoading && pick.songs.isEmpty()),
                                 glowPosition = glowPosition,
                                 onOpen = { onPickClick(index) },
@@ -210,11 +220,27 @@ fun HomeScreen(
                 }
             }
 
+            if (state.forYouEligible && (state.isLoading || state.forYouLoading || state.forYou.isNotEmpty())) {
+                item {
+                    Column {
+                        SectionTitle("Untukmu", onSeeAll = onSeeAllForYou)
+                        SongCardRow(
+                            state.forYou.take(HOME_ROW_LIMIT),
+                            "Untukmu",
+                            state.isLoading || (state.forYouLoading && state.forYou.isEmpty()),
+                            onPlay,
+                            onOpenAlbum,
+                            forYouRowState
+                        )
+                    }
+                }
+            }
+
             if (state.isLoading || state.newReleases.isNotEmpty()) {
                 item {
                     Column {
                         SectionTitle("Rilis Baru", onSeeAll = onSeeAllNewReleases)
-                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", state.isLoading, onPlay, onOpenAlbum)
+                        SongCardRow(state.newReleases.take(HOME_ROW_LIMIT), "Rilis Baru", state.isLoading, onPlay, onOpenAlbum, newReleasesRowState)
                     }
                 }
             }
@@ -222,7 +248,7 @@ fun HomeScreen(
             item {
                 Column {
                     SectionTitle("Lagu Trending", onSeeAll = onSeeAllTrending)
-                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", state.isLoading, onPlay, onOpenAlbum)
+                    SongCardRow(state.trending.take(HOME_ROW_LIMIT), "Lagu Trending", state.isLoading, onPlay, onOpenAlbum, trendingRowState)
                 }
             }
 
@@ -237,7 +263,6 @@ fun HomeScreen(
                 Column {
                     SectionTitle("Artis Pilihan")
                     if (state.isLoading) {
-                        // Skeleton selagi Beranda memuat (tiga artis teratas)
                         repeat(3) { index -> ArtistRowSkeleton(rank = index + 1) }
                     } else {
                         artists.forEachIndexed { index, artist ->
@@ -256,12 +281,12 @@ fun HomeScreen(
 }
 
 private val HomeGlowPalette = listOf(
-    Color(0xFFFF9F0A), // oranye
-    Color(0xFFE5173F), // merah
-    Color(0xFFB5179E), // magenta
-    Color(0xFF5E5CE6), // indigo
-    Color(0xFF0A84FF), // biru
-    Color(0xFF1FC8B4)  // tosca
+    Color(0xFFFF9F0A),
+    Color(0xFFE5173F),
+    Color(0xFFB5179E),
+    Color(0xFF5E5CE6),
+    Color(0xFF0A84FF),
+    Color(0xFF1FC8B4)
 )
 
 private const val GLOW_STEP_MS = 5000
@@ -296,7 +321,6 @@ private fun HomeGlow(position: State<Float>, modifier: Modifier = Modifier) {
             .fillMaxWidth()
             .height(380.dp)
             .drawBehind {
-                // Dibaca di dalam draw: hanya menggambar ulang, tanpa recomposition tiap frame
                 val top = glowColor(position.value)
                 val middle = glowColor(position.value + 1f)
                 drawRect(
@@ -319,7 +343,6 @@ fun HomeHeader(
     onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Sapaan ikut jam, dicek ulang tiap 30 detik
     var hour by remember { mutableIntStateOf(currentHour()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -377,15 +400,14 @@ private fun SectionTitle(title: String, onSeeAll: (() -> Unit)? = null) {
     }
 }
 
-// ---------- Pilihan Cepat ----------
 
-private val QuickPickFrontHeight = 164.dp   // tinggi lapisan depan (hitam)
-private val QuickPickLip = 8.dp                // tebal garis warna di bawah lapisan depan
-private val QuickPickBackExtra = 18.dp         // tambahan tinggi: lapisan hitam paling belakang
+private val QuickPickFrontHeight = 164.dp
+private val QuickPickLip = 8.dp
+private val QuickPickBackExtra = 18.dp
 private val QuickPickRadius = 26.dp
-private val QuickPickBezel = 7.dp              // bingkai hitam di sekeliling panel cover
-private val QuickPickPanelHeight = 92.dp       // tinggi panel di sisi kanan (yang paling tinggi)
-private const val PANEL_LEFT_FRACTION = 0.74f  // tinggi panel di sisi kiri relatif terhadap kanan
+private val QuickPickBezel = 7.dp
+private val QuickPickPanelHeight = 92.dp
+private const val PANEL_LEFT_FRACTION = 0.74f
 
 /**
  * Kartu Pilihan Cepat: lapisan hitam bertumpuk dengan garis warna di sela-selanya (warnanya ikut
@@ -413,10 +435,7 @@ private fun QuickPickCard(
                 val frontH = QuickPickFrontHeight.toPx()
                 val c1 = glowColor(glowPosition.value)
                 val c2 = glowColor(glowPosition.value + 1f)
-                // Lapisan paling belakang
                 drawRoundRect(Color.Black, size = size, cornerRadius = r)
-                // Garis warna (warna yang sama dengan gradasi beranda, dibuat lembut dan menyatu dengan hitam): lapisan depan digeser
-                // ke bawah sedikit sehingga yang terlihat hanya tepi bawahnya
                 drawRoundRect(
                     brush = Brush.horizontalGradient(
                         listOf(
@@ -429,12 +448,10 @@ private fun QuickPickCard(
                     size = Size(size.width, frontH),
                     cornerRadius = r
                 )
-                // Lapisan depan
                 drawRoundRect(Color.Black, size = Size(size.width, frontH), cornerRadius = r)
             }
             .clickable(enabled = !loading, onClick = onOpen)
     ) {
-        // Panel cover: bentuknya pas dengan lekukan, dengan tepi bergradasi tipis sebagai pembatas
         Box(
             modifier = Modifier
                 .padding(QuickPickBezel)
@@ -442,7 +459,6 @@ private fun QuickPickCard(
                 .height(QuickPickPanelHeight)
                 .clip(panelShape)
                 .drawBehind {
-                    // Latar saat cover belum termuat: gradasi warna beranda
                     val c1 = glowColor(glowPosition.value)
                     val c2 = glowColor(glowPosition.value + 1f)
                     drawRect(Brush.linearGradient(listOf(c1, c2), Offset.Zero, Offset(size.width, size.height)))
@@ -452,7 +468,6 @@ private fun QuickPickCard(
             if (covers.isNotEmpty()) {
                 BlendedCovers(urls = covers, modifier = Modifier.fillMaxSize())
             }
-            // Kilau diagonal tipis + gelap di tepi bawah supaya tepi panel tegas
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -474,7 +489,6 @@ private fun QuickPickCard(
                     )
             )
             if (loading) {
-                // Skeleton selagi daftar lagunya dimuat: menutupi panel, tombol putar belum ada
                 Box(modifier = Modifier.matchParentSize().shimmerBackground())
             }
             if (!loading) Box(
@@ -496,7 +510,6 @@ private fun QuickPickCard(
             }
         }
 
-        // Teks di ceruk kiri bawah panel
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -507,7 +520,6 @@ private fun QuickPickCard(
                 )
         ) {
             if (loading) {
-                // Skeleton teks: dua bar setinggi baris label dan subjudul
                 Spacer(Modifier.height(3.dp))
                 Box(modifier = Modifier.width(88.dp).height(13.dp).shimmerBackground(RoundedCornerShape(6.dp)))
                 Spacer(Modifier.height(7.dp))
@@ -571,9 +583,9 @@ private class StepPanelShape(private val radius: Dp) : Shape {
         val w = size.width
         val h = size.height
         val r = with(density) { radius.toPx() }
-        val yl = h * PANEL_LEFT_FRACTION   // dasar panel di sisi kiri
-        val xa = w * 0.40f                 // kurva mulai (kiri)
-        val xb = w * 0.58f                 // kurva selesai (kanan)
+        val yl = h * PANEL_LEFT_FRACTION
+        val xa = w * 0.40f
+        val xb = w * 0.58f
         val k = (xb - xa) * 0.55f
         val path = Path().apply {
             moveTo(r, 0f)
@@ -593,7 +605,6 @@ private class StepPanelShape(private val radius: Dp) : Shape {
     }
 }
 
-// ---------- Rilis Baru & Lagu Trending (komponen sama) ----------
 
 @Composable
 private fun SongCardRow(
@@ -601,14 +612,15 @@ private fun SongCardRow(
     source: String,
     loading: Boolean,
     onPlay: (List<Song>, Int, String) -> Unit,
-    onOpenAlbum: (ArtistAlbum) -> Unit
+    onOpenAlbum: (ArtistAlbum) -> Unit,
+    listState: LazyListState
 ) {
     LazyRow(
+        state = listState,
         contentPadding = PaddingValues(horizontal = 20.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         if (loading) {
-            // Skeleton selagi memuat, juga saat dimuat ulang walau daftar lama masih ada
             items(4) { SongCardSkeleton() }
         } else if (songs.isNotEmpty()) {
             itemsIndexed(songs, key = { index, song -> "$index-${song.url}" }) { index, song ->
@@ -616,7 +628,6 @@ private fun SongCardRow(
                     song = song,
                     onClick = {
                         if (song.isAlbumEntry()) {
-                            // Album/EP: buka halaman albumnya. Antrean hanya berisi lagu yang bisa diputar.
                             onOpenAlbum(song.toAlbumRef())
                         } else {
                             val playable = songs.filterNot { it.isAlbumEntry() }
@@ -678,7 +689,6 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
     }
 }
 
-// ---------- Genre ----------
 
 @Composable
 private fun GenreGrid(loading: Boolean, onGenreClick: (name: String, query: String, accentArgb: Int) -> Unit) {
@@ -692,13 +702,11 @@ private fun GenreGrid(loading: Boolean, onGenreClick: (name: String, query: Stri
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 column.forEach { genre ->
                     if (loading) {
-                        // Skeleton selagi Beranda memuat: ukuran sama dengan GenrePill
                         Box(modifier = Modifier.size(width = 112.dp, height = 44.dp).shimmerBackground(RoundedCornerShape(12.dp)))
                     } else {
                         GenrePill(
                             genre = genre,
                             onClick = {
-                                // Nama di pil bisa dua baris ("Dance &\nElektronik"); judul halaman satu baris
                                 onGenreClick(genre.name.replace("\n", " "), genre.query, genre.accent.toArgb())
                             }
                         )
@@ -735,7 +743,6 @@ private fun GenrePill(genre: Genre, onClick: () -> Unit, modifier: Modifier = Mo
     }
 }
 
-// ---------- Artis Pilihan ----------
 
 /** Penanda baris artis selagi memuat: nomor urut, foto bulat, nama, dan jumlah subscriber. */
 @Composable

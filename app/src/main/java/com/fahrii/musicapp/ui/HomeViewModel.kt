@@ -7,9 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.ArtistStat
 import com.fahrii.musicapp.data.ChartRepository
+import com.fahrii.musicapp.data.HistoryRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.QuickPickRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.identityKey
 import com.fahrii.musicapp.data.isAlbumEntry
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
@@ -38,27 +40,32 @@ data class HomeUiState(
         QuickPick("Jazz", "Jazz untuk bersantai", "jazz"),
         QuickPick("Mix", "Campuran lagu populer", "top hits")
     ),
+    val forYou: List<Song> = emptyList(),
+    val forYouEligible: Boolean = false,
+    val forYouLoading: Boolean = false,
     val newReleases: List<Song> = emptyList(),
     val trending: List<Song> = emptyList(),
     val isLoading: Boolean = true,
-    // True selama tarik-untuk-muat-ulang berjalan; isi Beranda tetap terlihat (tanpa skeleton)
+
     val isRefreshing: Boolean = false,
-    // True selama kartu Pilihan Cepat masih diambil; dipakai untuk menampilkan skeleton
+
     val quickPicksLoading: Boolean = true,
     val error: String? = null
 )
 
-// Jumlah lagu per baris Beranda yang tampil (sama dengan HOME_ROW_LIMIT di HomeScreen)
 private const val HOME_PREFETCH_COUNT = 10
 
-// Lama minimum tarik-untuk-muat-ulang berjalan (ms), supaya animasinya sempat terlihat
 private const val PULL_REFRESH_MIN_MS = 1_000L
 
-// Jumlah kartu per baris yang langsung terlihat tanpa menggeser
 private const val HOME_VISIBLE_COUNT = 4
 
-class HomeViewModel(app: Application) : AndroidViewModel(app) {
+private const val FOR_YOU_MIN_PLAYS = 10
 
+private const val FOR_YOU_EXCLUDE_PLAYS = 3
+
+private const val FOR_YOU_ARTISTS = 5
+
+class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     private val chartArtists = MutableStateFlow<List<ArtistStat>>(emptyList())
 
@@ -74,6 +81,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     val subscribers: StateFlow<Map<String, Long>> = artistSubscribers.asStateFlow()
 
     private var quickPicksJob: Job? = null
+    private var forYouJob: Job? = null
     private var durationsJob: Job? = null
 
     init {
@@ -112,9 +120,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
             val releaseSongs = r.getOrNull() ?: if (pull) _state.value.newReleases else emptyList()
             val trendingSongs = t.getOrNull() ?: if (pull) _state.value.trending else emptyList()
-            // Lengkapi nama artis kolaborasi untuk kartu yang langsung terlihat di layar sebelum daftar
-            // muncul, supaya namanya tidak berubah di depan mata. Sisanya (di luar layar, perlu digeser)
-            // dilengkapi di latar belakang tanpa menahan tampilan.
+
             val visible = releaseSongs.take(HOME_VISIBLE_COUNT) + trendingSongs.take(HOME_VISIBLE_COUNT)
             val offscreen = releaseSongs.drop(HOME_VISIBLE_COUNT).take(HOME_PREFETCH_COUNT - HOME_VISIBLE_COUNT) +
                     trendingSongs.drop(HOME_VISIBLE_COUNT).take(HOME_PREFETCH_COUNT - HOME_VISIBLE_COUNT)
@@ -122,7 +128,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             viewModelScope.launch { ArtistNames.prefetch(offscreen, timeoutMs = 60_000) }
 
             if (pull) {
-                // Datanya bisa datang sangat cepat; tahan sebentar supaya skeleton dan ikon terlihat
+
                 val remaining = PULL_REFRESH_MIN_MS - (SystemClock.elapsedRealtime() - startedAt)
                 if (remaining > 0) delay(remaining)
             }
@@ -141,7 +147,65 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 )
             }
         }
-        loadQuickPicks()
+
+        loadQuickPicks(shuffle = pull)
+        loadForYou(shuffle = pull)
+    }
+
+    /**
+     * Baris Untukmu: lagu populer artis yang paling sering didengar plus artis yang mirip. Baris ini
+     * hanya ada kalau riwayat dengar sudah cukup. Diambil seminggu sekali dan disimpan di HP; saat
+     * tarik-untuk-refresh, isinya diacak ulang dari kandidat tersimpan tanpa internet.
+     */
+    private fun loadForYou(shuffle: Boolean) {
+        if (forYouJob?.isActive == true) return
+
+        val app = getApplication<Application>()
+        val history = HistoryRepository.getInstance(app)
+        val favorites = history.artists.value
+        val eligible = favorites.isNotEmpty() && favorites.sumOf { it.plays } >= FOR_YOU_MIN_PLAYS
+        if (!eligible) {
+            _state.update { it.copy(forYouEligible = false, forYou = emptyList(), forYouLoading = false) }
+            return
+        }
+
+        val repo = QuickPickRepository.getInstance(app)
+        val label = QuickPickRepository.FOR_YOU_LABEL
+        _state.update {
+            it.copy(
+                forYouEligible = true,
+                forYouLoading = true,
+                forYou = if (it.forYou.isEmpty()) repo.songsOf(label) else it.forYou
+            )
+        }
+
+        forYouJob = viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val entry = repo.entry(label)
+            if (entry != null && entry.isFresh(now)) {
+                if (!shuffle) return@launch
+                val reshuffled = repo.reshuffle(label, now)
+                if (reshuffled != null) {
+                    _state.update { it.copy(forYou = reshuffled) }
+                    return@launch
+                }
+            }
+
+            val oftenPlayed = history.songs.value
+                .filter { it.plays >= FOR_YOU_EXCLUDE_PLAYS }
+                .map { it.song.identityKey() }
+                .toSet()
+            val fetched = repo.fetchForYou(
+                artistNames = favorites.take(FOR_YOU_ARTISTS).map { it.name },
+                isExcluded = { it.identityKey() in oftenPlayed },
+                nowMs = now
+            )
+            if (fetched.songs.size < QuickPickRepository.MIN_SONGS) return@launch
+
+            repo.save(label, fetched.songs, now, fetched.pool, fetched.coreSize)
+            _state.update { it.copy(forYou = fetched.songs) }
+        }
+        forYouJob?.invokeOnCompletion { _state.update { it.copy(forYouLoading = false) } }
     }
 
     /**
@@ -162,7 +226,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                     gate.withPermit {
                         val query = ChartRepository.searchQuery(song.title, song.artist)
                         var seconds: Long? = null
-                        // Sekali coba ulang kalau gagal (mis. koneksi putus sebentar)
+
                         for (attempt in 0..1) {
                             val result = runCatching { MusicRepository.findSongDuration(query) }
                             if (result.isSuccess) {
@@ -198,10 +262,14 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Pilihan Cepat diganti seminggu sekali dan disimpan di HP. Yang tersimpan ditampilkan dulu,
-     * lalu kartu yang sudah lewat seminggu (atau belum pernah ada) diambil ulang dari sumber tren.
+     * Pilihan Cepat diambil dari sumber tren seminggu sekali dan disimpan di HP. Yang tersimpan
+     * ditampilkan dulu, lalu kartu yang sudah lewat seminggu (atau belum pernah ada) diambil ulang.
+     *
+     * Kalau [shuffle] (tarik-untuk-refresh), kartu yang masih segar tidak diambil ulang dari internet:
+     * lagu teratasnya tetap dan sisanya diacak ulang dari kandidat yang tersimpan. Mix selalu
+     * dirangkai ulang, dan juga kalau ada kartu lain yang baru diambil ulang.
      */
-    private fun loadQuickPicks() {
+    private fun loadQuickPicks(shuffle: Boolean = false) {
         if (quickPicksJob?.isActive == true) return
         _state.update { it.copy(quickPicksLoading = true) }
         quickPicksJob = viewModelScope.launch {
@@ -216,34 +284,54 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
-            // Tampilkan dulu yang tersimpan, supaya kartu tidak kosong selama menunggu
             _state.value.quickPicks.forEach { p ->
                 if (p.songs.isEmpty()) show(p.label, repo.songsOf(p.label))
             }
 
             val labels = _state.value.quickPicks.map { it.label }
             val mix = QuickPickRepository.MIX_LABEL
-            // Mix paling akhir karena bahannya diambil dari kartu lain
-            for (label in labels.filter { it != mix } + labels.filter { it == mix }) {
-                if (repo.entry(label)?.isFresh(now) == true) continue
+            val others = labels.filter { it != mix }
+            var refetched = false
 
-                val songs = if (label == mix) {
-                    repo.buildMix(labels.filter { it != mix }.map { repo.songsOf(it) }, now)
-                } else {
-                    repo.fetchFresh(label, now)
+            for (label in others) {
+                val entry = repo.entry(label)
+                if (entry != null && entry.isFresh(now)) {
+                    if (!shuffle) continue
+
+                    val reshuffled = repo.reshuffle(label, now)
+                    if (reshuffled != null) {
+                        show(label, reshuffled)
+                        continue
+                    }
+
                 }
 
-                if (songs.size < QuickPickRepository.MIN_SONGS) {
-                    // Terlalu sedikit (mungkin gagal sebagian): jangan menimpa yang lama dan jangan
-                    // disimpan sebagai pilihan minggu ini, supaya dicoba lagi lain kali
-                    if (repo.songsOf(label).isEmpty() && songs.isNotEmpty()) show(label, songs)
+                val fetched = repo.fetchFresh(label, now)
+                if (fetched.songs.size < QuickPickRepository.MIN_SONGS) {
+
+                    if (repo.songsOf(label).isEmpty() && fetched.songs.isNotEmpty()) show(label, fetched.songs)
                     continue
                 }
-                repo.save(label, songs, now)
-                show(label, songs)
+                repo.save(label, fetched.songs, now, fetched.pool, fetched.coreSize)
+                show(label, fetched.songs)
+                refetched = true
+            }
+
+            if (labels.contains(mix)) {
+                val mixFresh = repo.entry(mix)?.isFresh(now) == true
+                if (shuffle || refetched || !mixFresh) {
+                    val salt = if (shuffle) now else 0L
+                    val songs = repo.buildMix(others.map { repo.poolOf(it) }, now, salt)
+                    if (songs.size >= QuickPickRepository.MIN_SONGS) {
+                        repo.save(mix, songs, now)
+                        show(mix, songs)
+                    } else if (repo.songsOf(mix).isEmpty() && songs.isNotEmpty()) {
+                        show(mix, songs)
+                    }
+                }
             }
         }
-        // Selesai (berhasil atau gagal): skeleton tidak boleh menyala selamanya
+
         quickPicksJob?.invokeOnCompletion { _state.update { it.copy(quickPicksLoading = false) } }
     }
 }

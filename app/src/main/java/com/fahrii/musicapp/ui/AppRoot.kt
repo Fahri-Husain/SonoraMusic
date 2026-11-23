@@ -75,6 +75,7 @@ private const val ROUTE_REPLAY = "replay"
 private const val ROUTE_ARTIST = "artist/{name}"
 private const val ROUTE_ALBUM = "album?title={title}&artist={artist}&url={url}&cover={cover}"
 private const val ROUTE_MOST_PLAYED = "most_played"
+private const val ROUTE_FOR_YOU = "for_you"
 private const val ROUTE_NEW_RELEASES = "new_releases"
 private const val ROUTE_TRENDING = "trending"
 private const val ROUTE_GENRE = "genre?name={name}&query={query}&accent={accent}"
@@ -98,7 +99,6 @@ fun AppRoot(
     libraryViewModel: LibraryViewModel
 ) {
     val navController = rememberNavController()
-    // Menu titik tiga di setiap lagu: layar memanggil songMenu.show(...), sheet-nya digambar di bawah
     val songMenu = remember { SongMenuController() }
     val homeViewModel: HomeViewModel = viewModel()
     val searchViewModel: SearchViewModel = viewModel()
@@ -106,11 +106,9 @@ fun AppRoot(
     val playerState by playerViewModel.state.collectAsState()
     val library by libraryViewModel.state.collectAsState()
     val playHistory by libraryViewModel.playHistory.collectAsState()
-    // Ikon "terunduh" di setiap baris lagu membaca daftar ini lewat LocalDownloadedUrls
     val downloadedUrls by libraryViewModel.downloadedUrls.collectAsState()
     val context = LocalContext.current
 
-    // Pesan unduhan (mulai, selesai, gagal) tampil sebagai Toast di layar mana pun
     LaunchedEffect(libraryViewModel) {
         libraryViewModel.downloadEvents.collect { message ->
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
@@ -120,8 +118,6 @@ fun AppRoot(
 
     val route = backStackEntry?.destination?.route
 
-    // Jejak rute [sebelumnya, sekarang], diisi listener navigasi sebelum recompose,
-    // supaya header beranda tahu harus geser atau tidak saat berpindah Beranda <-> Koleksi
     val routeTrail = remember { arrayOfNulls<String>(2) }
     DisposableEffect(navController) {
         val listener = NavController.OnDestinationChangedListener { _, destination, _ ->
@@ -133,10 +129,7 @@ fun AppRoot(
         navController.addOnDestinationChangedListener(listener)
         onDispose { navController.removeOnDestinationChangedListener(listener) }
     }
-    // Now Playing adalah lapisan di atas NavHost (bukan rute), supaya halaman yang sedang dibuka
-    // tetap tampil di belakangnya saat player digeser turun.
     var showPlayer by rememberSaveable { mutableStateOf(false) }
-    // True kalau player ditutup lewat geser: layarnya sudah meluncur keluar sendiri, jadi tanpa animasi keluar lagi
     var playerClosedBySwipe by remember { mutableStateOf(false) }
     val onPlayerScreen = showPlayer
     val currentTab = when (route) {
@@ -145,7 +138,6 @@ fun AppRoot(
         else -> BottomTab.HOME
     }
 
-    // Sumber blur: halaman di belakang, bar mengambang mengambil gambarnya dari sini
     val backdrop = rememberGlassBackdrop()
     val homeListState = rememberLazyListState()
     val scrolled by remember {
@@ -156,11 +148,8 @@ fun AppRoot(
     val headerGlassAlpha by animateFloatAsState(if (scrolled) 1f else 0f, label = "headerGlass")
     var headerHeightPx by remember { mutableIntStateOf(0) }
 
-    // Tinggi bar mengambang diukur, supaya daftar bisa di-scroll sampai tidak ketutup
     val density = LocalDensity.current
     var barHeightPx by remember { mutableIntStateOf(0) }
-    // Bar bawah di halaman Cari: false = ringkas (bulatan cari + mini player),
-    // true = navbar penuh seperti di Beranda. Selalu kembali ringkas saat berpindah halaman.
     var searchBarExpanded by remember { mutableStateOf(false) }
     LaunchedEffect(route) { searchBarExpanded = false }
     val bottomInset = if (onPlayerScreen) 0.dp else with(density) { barHeightPx.toDp() }
@@ -204,7 +193,6 @@ fun AppRoot(
                     modifier = Modifier
                         .fillMaxSize()
                         .glassSource(backdrop),
-                    // Beranda <-> Koleksi: geser horizontal (Beranda di kiri, Koleksi di kanan).
                     enterTransition = {
                         val dir = tabSlideDirection(initialState.destination.route, targetState.destination.route)
                         when {
@@ -247,6 +235,7 @@ fun AppRoot(
                             onArtistClick = { name -> navController.navigate("artist/${Uri.encode(name)}") },
                             listState = homeListState,
                             onPickClick = { navController.navigate("pick/$it") },
+                            onSeeAllForYou = { navController.navigate(ROUTE_FOR_YOU) },
                             onSeeAllNewReleases = { navController.navigate(ROUTE_NEW_RELEASES) },
                             onSeeAllTrending = { navController.navigate(ROUTE_TRENDING) },
                             topInset = with(density) { headerHeightPx.toDp() }
@@ -270,7 +259,6 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_LIBRARY) {
-                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat impor berjalan
                         val importState by libraryViewModel.importState.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             LibraryScreen(
@@ -295,7 +283,6 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_REPLAY) {
-                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat statistik berubah
                         val replayStats by libraryViewModel.replayStats.collectAsState()
                         val artistImages by libraryViewModel.artistImages.collectAsState()
                         val songAlbums by libraryViewModel.songAlbums.collectAsState()
@@ -392,8 +379,6 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_GENRE_SONGS) {
-                        // Daftar lengkap memakai data yang sama dengan halaman Genre di bawahnya
-                        // (ViewModel milik entri halaman Genre), jadi tidak perlu memuat ulang
                         val genreEntry = remember(it) {
                             runCatching { navController.getBackStackEntry(ROUTE_GENRE) }.getOrNull()
                         }
@@ -421,9 +406,7 @@ fun AppRoot(
 
                     composable(ROUTE_NEW_RELEASES) {
                         val homeState by homeViewModel.state.collectAsState()
-                        // Lagu rilis baru belum punya durasi; diambil sekarang karena daftarnya yang menampilkan
                         LaunchedEffect(homeState.newReleases.size) { homeViewModel.loadNewReleaseDurations() }
-                        // Tampilan sama dengan detail Pilihan Cepat (cover mosaik, Putar/Acak, daftar bernomor)
                         PickDetailScreen(
                             pick = QuickPick(
                                 label = "Rilis Baru",
@@ -437,10 +420,8 @@ fun AppRoot(
                             onPlay = { songs, index ->
                                 val tapped = songs.getOrNull(index)
                                 if (tapped != null && tapped.isAlbumEntry()) {
-                                    // Album/EP: buka halaman albumnya, bukan diputar
                                     openAlbum(tapped.toAlbumRef())
                                 } else {
-                                    // Putar semua/acak/klik lagu: album tidak ikut masuk antrean
                                     val playable = songs.filterNot { it.isAlbumEntry() }
                                     val start = tapped?.let { t -> playable.indexOfFirst { it.url == t.url } } ?: 0
                                     if (playable.isNotEmpty()) {
@@ -451,9 +432,24 @@ fun AppRoot(
                         )
                     }
 
+                    composable(ROUTE_FOR_YOU) {
+                        val homeState by homeViewModel.state.collectAsState()
+                        PickDetailScreen(
+                            pick = QuickPick(
+                                label = "Untukmu",
+                                subtitle = "Dari artis favoritmu dan yang mirip",
+                                query = "",
+                                songs = homeState.forYou
+                            ),
+                            currentSongUrl = playerState.currentSong?.url,
+                            isPlaying = playerState.isPlaying,
+                            onBack = { navController.popBackStack() },
+                            onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Untukmu") }
+                        )
+                    }
+
                     composable(ROUTE_TRENDING) {
                         val homeState by homeViewModel.state.collectAsState()
-                        // Tampilan sama dengan detail Pilihan Cepat (cover mosaik, Putar/Acak, daftar bernomor)
                         PickDetailScreen(
                             pick = QuickPick(
                                 label = "Lagu Trending",
@@ -574,7 +570,6 @@ fun AppRoot(
                     }
 
                     composable(ROUTE_DOWNLOADS) {
-                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat daftar unduhan berubah
                         val downloadedSongs by libraryViewModel.downloadedSongs.collectAsState()
                         Box(Modifier.fillMaxSize().statusBarsPadding()) {
                             CollectionListScreen(
@@ -594,7 +589,6 @@ fun AppRoot(
                     ) { entry ->
                         val id = entry.arguments?.getString("id")
                         val playlist = library.playlists.firstOrNull { it.id == id }
-                        // Dikumpulkan di sini saja, supaya AppRoot tidak ikut recompose saat nama album ditemukan
                         val songAlbums by libraryViewModel.songAlbums.collectAsState()
                         val likedUrls = remember(library.liked) { library.liked.map { it.url }.toSet() }
                         val downloadingUrls by libraryViewModel.downloadingUrls.collectAsState()
@@ -602,7 +596,6 @@ fun AppRoot(
                         if (playlist == null) {
                             LaunchedEffect(Unit) { navController.popBackStack() }
                         } else {
-                            // Cover memenuhi layar sampai bawah status bar, jadi tanpa statusBarsPadding
                             PlaylistScreen(
                                 playlist = playlist,
                                 playlists = library.playlists,
@@ -611,7 +604,6 @@ fun AppRoot(
                                 currentSongUrl = playerState.currentSong?.url,
                                 isPlaying = playerState.isPlaying,
                                 onBack = { navController.popBackStack() },
-                                // Playlist buatan sendiri: antrean berhenti di lagu terakhir, tanpa putar otomatis
                                 onPlay = { songs, index -> playerViewModel.playQueue(songs, index, "Playlist \"${playlist.name}\"", autoplay = false) },
                                 onRemoveSong = { libraryViewModel.removeFromPlaylist(playlist.id, it.url) },
                                 onMoveSong = { from, to -> libraryViewModel.moveInPlaylist(playlist.id, from, to) },
@@ -658,7 +650,6 @@ fun AppRoot(
                 }
             }
 
-            // Header ikut geser bersama halaman saat Beranda <-> Koleksi; selain itu muncul/hilang seperti biasa
             AnimatedVisibility(
                 visible = route == ROUTE_HOME,
                 modifier = Modifier.align(Alignment.TopCenter),
@@ -691,7 +682,6 @@ fun AppRoot(
                 }
             }
 
-            // Bar mengambang (mini player + navbar), di atas halaman, bukan di dalam Scaffold
             AnimatedVisibility(
                 visible = !onPlayerScreen,
                 modifier = Modifier.align(Alignment.BottomCenter),
@@ -700,8 +690,6 @@ fun AppRoot(
             ) {
                 SonoraBottomBars(
                     selected = currentTab,
-                    // Halaman Cari: bar ringkas (bulatan cari di kiri, mini player di kanannya).
-                    // Ketuk bulatan cari lagi untuk memunculkan navbar + mini player seperti di Beranda.
                     compact = route == ROUTE_SEARCH && !searchBarExpanded,
                     playerState = playerState,
                     backdrop = backdrop,
@@ -716,7 +704,6 @@ fun AppRoot(
                     },
                     onSearchClick = {
                         if (route == ROUTE_SEARCH) {
-                            // Sudah di halaman Cari: bolak-balik antara bar ringkas dan bar penuh
                             searchBarExpanded = !searchBarExpanded
                         } else {
                             navController.navigateToTab(ROUTE_SEARCH)
@@ -731,8 +718,6 @@ fun AppRoot(
                 )
             }
 
-            // Now Playing: naik dari bawah saat dibuka, turun lagi saat kembali. Berada di atas
-            // NavHost dan bar bawah, jadi halaman di belakangnya tetap terlihat saat digeser turun.
             AnimatedVisibility(
                 visible = showPlayer,
                 enter = slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it },
@@ -742,14 +727,12 @@ fun AppRoot(
                     slideOutVertically(tween(340, easing = FastOutSlowInEasing)) { it }
                 }
             ) {
-                // Didaftarkan saat player dibuka, jadi lebih diprioritaskan daripada tombol kembali halaman di belakangnya
                 BackHandler { showPlayer = false }
                 NowPlayingScreen(
                     viewModel = playerViewModel,
                     libraryViewModel = libraryViewModel,
                     onBack = { showPlayer = false },
                     onOpenMenu = { songMenu.show(it) },
-                    // Tutup pemutarnya dulu supaya halaman artis terlihat
                     onOpenArtist = { name ->
                         showPlayer = false
                         navController.navigate("artist/${Uri.encode(name)}")
@@ -759,18 +742,16 @@ fun AppRoot(
                         showPlayer = false
                     },
                     modifier = Modifier
-                        .pointerInput(Unit) {} // cegah ketukan tembus ke halaman di belakang
+                        .pointerInput(Unit) {}
                         .background(Sonora.Background)
                         .navigationBarsPadding()
                 )
             }
 
-            // Bottom sheet menu titik tiga lagu (satu untuk semua layar)
             SongMenuSheets(
                 controller = songMenu,
                 libraryViewModel = libraryViewModel,
                 playerViewModel = playerViewModel,
-                // Kalau menu dibuka dari layar pemutar, tutup pemutarnya dulu supaya halaman tujuan terlihat
                 onOpenArtist = { name ->
                     showPlayer = false
                     navController.navigate("artist/${Uri.encode(name)}")
@@ -785,9 +766,6 @@ fun AppRoot(
 }
 
 private fun NavHostController.navigateToTab(route: String) {
-    // Kalau halaman tab tujuan sudah ada di back stack (mis. Beranda -> Artis, lalu ketuk Beranda),
-    // cukup tutup halaman-halaman di atasnya. Jalur popUpTo + saveState + restoreState di bawah
-    // bisa membuat navigasi tidak berpindah saat entri tujuan sudah berada di bawah tumpukan.
     if (popBackStack(route, inclusive = false)) return
     navigate(route) {
         popUpTo(graph.findStartDestination().id) { saveState = true }
