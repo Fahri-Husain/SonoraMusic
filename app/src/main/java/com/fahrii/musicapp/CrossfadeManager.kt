@@ -68,7 +68,10 @@ class CrossfadeManager(
     // Equalizer pemutar utama; pemutar kedua didaftarkan juga supaya suaranya tidak loncat saat fade
     private val equalizer: EqualizerController? = null,
     // Penyama volume pemutar utama; gain lagu yang sedang diputar diwariskan ke pemutar kedua
-    private val normalizer: LoudnessNormalizerAudioProcessor? = null
+    private val normalizer: LoudnessNormalizerAudioProcessor? = null,
+    // Pengali volume dari fade Play/Pause (lihat FadingPlayer). Semua volume crossfade dikalikan ini,
+    // supaya fade Play/Pause tidak ditimpa crossfade dan sebaliknya.
+    private val userGain: () -> Float = { 1f }
 ) {
     private enum class Phase { IDLE, SYNC, HANDOFF, FADING }
 
@@ -242,7 +245,8 @@ class CrossfadeManager(
 
     private fun checkTrigger() {
         // Pengaman: volume dan filter DJ tidak boleh tertinggal kalau tidak sedang crossfade
-        if (player.volume != 1f) player.volume = 1f
+        val idleVolume = userGain()
+        if (player.volume != idleVolume) player.volume = idleVolume
         if (djFilter.enabled) djFilter.enabled = false
 
         val crossfadeMs = settings.crossfadeMs()
@@ -494,8 +498,9 @@ class CrossfadeManager(
         // Isi kedua pemutar sama, jadi ramp linier menjaga level tetap rata
         val x = ((SystemClock.elapsedRealtime() - phaseStartedAtMs).toFloat() / HANDOFF_MS)
             .coerceIn(0f, 1f)
-        player.volume = 1f - x
-        t.volume = x
+        val gain = userGain()
+        player.volume = (1f - x) * gain
+        t.volume = x * gain
         if (x >= 1f) beginFade(t)
     }
 
@@ -503,9 +508,18 @@ class CrossfadeManager(
         Log.d(TAG, "crossfade dibatalkan, lagu pindah biasa: $reason")
         phase = Phase.IDLE
         CrossfadeState.setCrossfading(false)
-        player.volume = 1f
+        player.volume = userGain()
         endDjFilters()
         releaseTail()
+    }
+
+    /**
+     * Dipanggil saat fade Play/Pause mengubah gain. Di luar crossfade, pemutar utama satu-satunya
+     * sumber suara, jadi volumenya langsung diikutkan. Selama crossfade, langkah fade (tiap 16 ms)
+     * yang menerapkannya bersama kurva crossfade.
+     */
+    fun applyUserGain(gain: Float) {
+        if (!released && phase == Phase.IDLE) player.volume = gain
     }
 
     // ---- Fade ----
@@ -521,7 +535,7 @@ class CrossfadeManager(
         val remaining = (duration - outgoingPos).coerceAtLeast(MIN_REMAINING_MS)
 
         // Pemutar kedua sudah memegang suara lagu lama; pemutar utama senyap, aman dipindah
-        t.volume = 1f
+        t.volume = userGain()
         player.volume = 0f
         // High-pass lagu baru dinyalakan selagi pemutar utama masih senyap, sebelum pindah lagu,
         // jadi lagu baru sudah lewat filter sejak sampel pertamanya (cutoff awal 2 kHz).
@@ -575,8 +589,9 @@ class CrossfadeManager(
         // Equal-power seperti SimpMusic: lagu lama cos(sudut), lagu baru sin(sudut), sudut naik
         // linear dari 0 ke 90 derajat. cos^2 + sin^2 = 1, jadi tenaga total tetap rata dan lagu
         // lama tidak "mati" di tengah sebelum lagu baru terisi.
-        player.volume = sin(incomingProgress * HALF_PI)
-        outgoingPlayer?.volume = cos(outgoingProgress * HALF_PI)
+        val gain = userGain()
+        player.volume = sin(incomingProgress * HALF_PI) * gain
+        outgoingPlayer?.volume = cos(outgoingProgress * HALF_PI) * gain
 
         // Sapuan filter ala DJ berjalan bersama volume. Sumbu waktunya sigmoid (datar di awal dan
         // akhir, curam di tengah, seperti crossfader mixer DJ); sumbu frekuensinya eksponensial
@@ -609,7 +624,7 @@ class CrossfadeManager(
         CrossfadeState.setCrossfading(false)
         endDjFilters()
         releaseTail()
-        player.volume = 1f
+        player.volume = userGain()
     }
 
     /** Matikan filter DJ di kedua pemutar; mematikan filter juga mengosongkan riwayatnya. */

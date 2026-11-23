@@ -22,6 +22,7 @@ import androidx.media3.session.SessionResult
 import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
 import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.audio.EqualizerController
+import com.fahrii.musicapp.audio.FadingPlayer
 import com.fahrii.musicapp.audio.LoudnessNormalizerAudioProcessor
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.LibraryRepository
@@ -125,10 +126,14 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true)
             .build()
 
+        // Play/Pause ala Spotify: pause turun halus dulu, play naik halus. Dipasang sebagai pemutar
+        // sesi, jadi tombol app, notifikasi, widget, dan headset semuanya ikut kena fade.
+        val fadingPlayer = FadingPlayer(player)
+
         val lib = LibraryRepository.getInstance(this)
         library = lib
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaSession.Builder(this, fadingPlayer)
             .setSessionActivity(openAppIntent())
             .setCallback(object : MediaSession.Callback {
                 // Sama seperti bawaan (semua pengontrol diterima), ditambah dua perintah kustom
@@ -195,7 +200,7 @@ class PlaybackService : MediaSessionService() {
                     return@collectLatest
                 }
                 delay(wait)
-                player.pause()
+                fadingPlayer.pause()
                 settings.cancelSleepTimer()
             }
         }
@@ -209,7 +214,13 @@ class PlaybackService : MediaSessionService() {
         equalizer = eqController
 
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
-        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter, eqController, normalizer)
+        crossfade = CrossfadeManager(
+            this, player, dataSourceFactory, settings, djFilter, eqController, normalizer,
+            userGain = { fadingPlayer.gain }
+        )
+        // Volume pemutar utama dipegang crossfade selama transisi; fade Play/Pause lewat sini
+        // supaya keduanya tidak saling menimpa
+        fadingPlayer.gainApplier = { g -> crossfade?.applyUserGain(g) ?: run { player.volume = g } }
     }
 
     /**
