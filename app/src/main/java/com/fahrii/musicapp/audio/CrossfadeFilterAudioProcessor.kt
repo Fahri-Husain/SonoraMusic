@@ -136,11 +136,15 @@ class CrossfadeFilterAudioProcessor : BaseAudioProcessor() {
  * (lewati senyap, ubah kecepatan) tetap ikut, jadi pengaturan "Lewati bagian senyap" tetap jalan.
  * Satu filter untuk satu pemutar: pemutar utama dan pemutar kedua di CrossfadeManager masing-masing
  * punya filter sendiri.
+ *
+ * [normalizer] (penyama volume antar lagu) dipasang *sebelum* filter DJ: ia harus mengukur audio asli,
+ * bukan audio yang sudah diredam filter saat crossfade, kalau tidak ia akan "melawan" sapuan filter.
  */
 @OptIn(UnstableApi::class)
 class DjFilterRenderersFactory(
     context: Context,
-    private val filter: CrossfadeFilterAudioProcessor
+    private val filter: CrossfadeFilterAudioProcessor,
+    private val normalizer: LoudnessNormalizerAudioProcessor? = null
 ) : DefaultRenderersFactory(context) {
 
     override fun buildAudioSink(
@@ -150,6 +154,6 @@ class DjFilterRenderersFactory(
     ): AudioSink =
         DefaultAudioSink.Builder(context)
             .setEnableFloatOutput(enableFloatOutput)
-            .setAudioProcessors(arrayOf(filter))
+            .setAudioProcessors(listOfNotNull<AudioProcessor>(normalizer, filter).toTypedArray())
             .build()
 }

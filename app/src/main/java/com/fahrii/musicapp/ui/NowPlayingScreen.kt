@@ -187,6 +187,9 @@ fun NowPlayingScreen(
     val state by viewModel.state.collectAsState()
     val progress by viewModel.progress.collectAsState()
     val isCrossfading by CrossfadeState.isCrossfading.collectAsState()
+    // Label muncul sejak persiapan (lagu lama masih tampil), bukan cuma setelah lagu baru tampil
+    val isCrossfadePreparing by CrossfadeState.isPreparing.collectAsState()
+    val showCrossfadeLabel = isCrossfading || isCrossfadePreparing
     val crossfadeFadeMs by CrossfadeState.fadeDurationMs.collectAsState()
     val library by libraryViewModel.state.collectAsState()
     val song = state.currentSong
@@ -830,7 +833,7 @@ fun NowPlayingScreen(
             PlaybackTimeRow(
                 elapsed = formatTime(shownPositionMs),
                 remaining = "-" + formatTime(remainingMs),
-                crossfading = isCrossfading,
+                crossfading = showCrossfadeLabel,
                 color = inactive
             )
 
@@ -960,7 +963,7 @@ fun NowPlayingScreen(
                 PlaybackTimeRow(
                     elapsed = formatTime(shownPositionMs),
                     remaining = "-" + formatTime(remainingMs),
-                    crossfading = isCrossfading,
+                    crossfading = showCrossfadeLabel,
                     color = inactive
                 )
                 Spacer(Modifier.height(12.dp))

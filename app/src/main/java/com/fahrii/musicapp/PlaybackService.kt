@@ -22,6 +22,7 @@ import androidx.media3.session.SessionResult
 import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
 import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.audio.EqualizerController
+import com.fahrii.musicapp.audio.LoudnessNormalizerAudioProcessor
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.LibraryRepository
 import com.fahrii.musicapp.data.MusicRepository
@@ -109,7 +110,10 @@ class PlaybackService : MediaSessionService() {
         // Filter low/high-pass untuk transisi ala DJ; hanya aktif selama crossfade (lihat CrossfadeManager)
         val djFilter = CrossfadeFilterAudioProcessor()
 
-        val player = ExoPlayer.Builder(this, DjFilterRenderersFactory(this, djFilter))
+        // Penyama volume antar lagu; menyala/mati mengikuti Pengaturan (lihat di bawah)
+        val normalizer = LoudnessNormalizerAudioProcessor().also { it.enabled = settings.normalizeVolume.value }
+
+        val player = ExoPlayer.Builder(this, DjFilterRenderersFactory(this, djFilter, normalizer))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -171,6 +175,11 @@ class PlaybackService : MediaSessionService() {
             settings.skipSilence.collect { player.skipSilenceEnabled = it }
         }
 
+        // Samakan volume antar lagu mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar
+        settingsScope.launch {
+            settings.normalizeVolume.collect { normalizer.enabled = it }
+        }
+
         // Jeda otomatis saat headset dicabut atau Bluetooth terputus: selalu aktif, tidak ada pengaturannya
         player.setHandleAudioBecomingNoisy(true)
 
@@ -200,7 +209,7 @@ class PlaybackService : MediaSessionService() {
         equalizer = eqController
 
         // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
-        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter, eqController)
+        crossfade = CrossfadeManager(this, player, dataSourceFactory, settings, djFilter, eqController, normalizer)
     }
 
     /**

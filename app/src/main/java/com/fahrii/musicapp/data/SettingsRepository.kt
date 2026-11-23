@@ -60,6 +60,10 @@ class SettingsRepository private constructor(context: Context) {
     /** Lewati bagian senyap di dalam lagu. Bawaan: mati. */
     val skipSilence: StateFlow<Boolean> = _skipSilence.asStateFlow()
 
+    private val _normalizeVolume = MutableStateFlow(prefs.getBoolean(KEY_NORMALIZE_VOLUME, false))
+    /** Samakan volume antar lagu (lagu keras diredam, lagu pelan dinaikkan sedikit). Bawaan: mati. */
+    val normalizeVolume: StateFlow<Boolean> = _normalizeVolume.asStateFlow()
+
     private val _downloadWifiOnly = MutableStateFlow(prefs.getBoolean(KEY_DOWNLOAD_WIFI_ONLY, false))
     /** Unduhan baru hanya boleh jalan lewat Wi-Fi (bukan data seluler). Bawaan: mati. */
     val downloadWifiOnly: StateFlow<Boolean> = _downloadWifiOnly.asStateFlow()
@@ -146,6 +150,11 @@ class SettingsRepository private constructor(context: Context) {
     fun setSkipSilence(enabled: Boolean) {
         _skipSilence.value = enabled
         prefs.edit().putBoolean(KEY_SKIP_SILENCE, enabled).apply()
+    }
+
+    fun setNormalizeVolume(enabled: Boolean) {
+        _normalizeVolume.value = enabled
+        prefs.edit().putBoolean(KEY_NORMALIZE_VOLUME, enabled).apply()
     }
 
     fun setDownloadWifiOnly(enabled: Boolean) {
@@ -243,6 +252,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_STREAM_QUALITY = "stream_quality"
         private const val KEY_DOWNLOAD_QUALITY = "download_quality"
         private const val KEY_SKIP_SILENCE = "skip_silence"
+        private const val KEY_NORMALIZE_VOLUME = "normalize_volume"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
         private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
         private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"

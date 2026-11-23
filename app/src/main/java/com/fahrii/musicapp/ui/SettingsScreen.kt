@@ -170,6 +170,8 @@ fun SettingsScreen(
     onStreamQualityChange: (AudioQuality) -> Unit,
     onDownloadQualityChange: (AudioQuality) -> Unit,
     onSkipSilenceChange: (Boolean) -> Unit,
+    normalizeVolume: Boolean,
+    onNormalizeVolumeChange: (Boolean) -> Unit,
     equalizerSummary: String,
     onOpenEqualizer: () -> Unit,
     shakeToSkip: Boolean,
@@ -317,6 +319,19 @@ fun SettingsScreen(
                                     checked = skipSilence,
                                     onCheckedChange = onSkipSilenceChange,
                                     label = "Lewati bagian senyap"
+                                )
+                            }
+                        )
+                        SettingsDivider()
+                        SettingsItem(
+                            icon = SettingsIcons.Levels,
+                            title = "Samakan volume antar lagu",
+                            subtitle = "Lagu keras diredam, lagu pelan dinaikkan sedikit",
+                            trailing = {
+                                SonoraSwitch(
+                                    checked = normalizeVolume,
+                                    onCheckedChange = onNormalizeVolumeChange,
+                                    label = "Samakan volume antar lagu"
                                 )
                             }
                         )

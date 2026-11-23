@@ -18,6 +18,7 @@ import com.fahrii.musicapp.audio.BiquadFilter
 import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
 import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.audio.EqualizerController
+import com.fahrii.musicapp.audio.LoudnessNormalizerAudioProcessor
 import com.fahrii.musicapp.data.SettingsRepository
 import kotlin.math.abs
 import kotlin.math.cos
@@ -65,7 +66,9 @@ class CrossfadeManager(
     private val settings: SettingsRepository,
     private val djFilter: CrossfadeFilterAudioProcessor,
     // Equalizer pemutar utama; pemutar kedua didaftarkan juga supaya suaranya tidak loncat saat fade
-    private val equalizer: EqualizerController? = null
+    private val equalizer: EqualizerController? = null,
+    // Penyama volume pemutar utama; gain lagu yang sedang diputar diwariskan ke pemutar kedua
+    private val normalizer: LoudnessNormalizerAudioProcessor? = null
 ) {
     private enum class Phase { IDLE, SYNC, HANDOFF, FADING }
 
@@ -77,6 +80,10 @@ class CrossfadeManager(
 
     // Filter di rantai audio pemutar kedua (low-pass untuk lagu yang keluar)
     private var tailFilter: CrossfadeFilterAudioProcessor? = null
+
+    // Penyama volume di rantai audio pemutar kedua. Pemutar kedua memutar sisa lagu lama dari tengah,
+    // jadi gainnya diwarisi dari pemutar utama dan dibekukan, bukan diukur ulang dari nol.
+    private var tailNormalizer: LoudnessNormalizerAudioProcessor? = null
 
     // Transisi ala DJ dipakai untuk crossfade yang sedang disiapkan/berjalan. Dibaca sekali saat
     // sinkronisasi dimulai, jadi mengubah pengaturan di tengah transisi tidak memotongnya.
@@ -334,7 +341,9 @@ class CrossfadeManager(
         tailCompUsedMs = tailCompensationMs
         val startMs = triggerPosMs + tailCompUsedMs.toLong()
         val filter = CrossfadeFilterAudioProcessor()
-        val p = ExoPlayer.Builder(context, DjFilterRenderersFactory(context, filter))
+        val tailNorm = LoudnessNormalizerAudioProcessor()
+        inheritNormalizer(tailNorm)
+        val p = ExoPlayer.Builder(context, DjFilterRenderersFactory(context, filter, tailNorm))
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -351,9 +360,23 @@ class CrossfadeManager(
         p.prepare()
         tail = p
         tailFilter = filter
+        tailNormalizer = tailNorm
         tailMediaId = item.mediaId
         lastPrepareAtMs = SystemClock.elapsedRealtime()
         tailTriggerPosMs = triggerPosMs
+    }
+
+    /**
+     * Samakan penyama volume pemutar kedua dengan pemutar utama: aktif atau tidaknya, dan gain lagu yang
+     * sedang diputar, lalu bekukan. Dipanggil saat pemutar kedua dibuat (supaya audio yang sudah
+     * ter-buffer lebih dulu pun memakai gain yang benar) dan lagi saat sinkronisasi dimulai, karena
+     * gain pemutar utama bisa bergeser sedikit di antaranya.
+     */
+    private fun inheritNormalizer(target: LoudnessNormalizerAudioProcessor) {
+        val main = normalizer ?: return
+        target.enabled = main.enabled
+        target.seedGainDb(main.currentGainDb)
+        target.frozen = true
     }
 
     /** Pemutar kedua siap terlambat: pindahkan ke sedikit di depan posisi sekarang dan tunggu lagi. */
@@ -366,6 +389,7 @@ class CrossfadeManager(
 
     private fun startSync(t: ExoPlayer) {
         t.volume = 0f
+        tailNormalizer?.let { inheritNormalizer(it) }
         // Low-pass lagu lama dinyalakan sekarang, selagi pemutar kedua masih senyap, di cutoff
         // terbuka lebar (20 kHz). Dengan begitu riwayat filternya sudah terisi saat suaranya
         // diambil alih; kalau baru dinyalakan di tengah lagu yang sedang bersuara keras, awal
@@ -386,6 +410,8 @@ class CrossfadeManager(
         t.playWhenReady = player.playWhenReady
         phase = Phase.SYNC
         phaseStartedAtMs = SystemClock.elapsedRealtime()
+        // Label "Crossfading" sudah muncul di lagu lama; dipadamkan lagi oleh abortSync atau fade mulai
+        CrossfadeState.setPreparing(true)
     }
 
     private fun stepSync() {
@@ -599,6 +625,7 @@ class CrossfadeManager(
         tail = null
         tailFilter?.enabled = false
         tailFilter = null
+        tailNormalizer = null
         tailMediaId = null
     }
 

@@ -255,6 +255,21 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         c.removeMediaItem(index)
     }
 
+    /**
+     * Pulihkan pemutar dari status error (mis. ERROR_CODE_IO_UNSPECIFIED karena koneksi putus atau
+     * URL stream kedaluwarsa). Error ExoPlayer menetap sampai prepare() dipanggil lagi, jadi tulisan
+     * "Gagal memutar" tidak hilang sendiri. Antrean dan lagunya tetap; stream diambil ulang lewat
+     * resolver. Dipanggil saat Beranda di-refresh. Pemutar dijeda dulu supaya refresh tidak tiba-tiba
+     * menyalakan musik; lagunya siap diputar dengan menekan Play. Kalau tidak sedang error, tidak
+     * melakukan apa-apa.
+     */
+    fun recoverFromError() {
+        val c = controller ?: return
+        if (c.playerError == null) return
+        c.pause()
+        c.prepare()
+    }
+
     fun togglePlayPause() {
         val c = controller ?: return
         if (c.isPlaying) {

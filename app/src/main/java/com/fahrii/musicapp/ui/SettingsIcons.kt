@@ -36,6 +36,9 @@ internal object SettingsIcons {
     /** Segitiga play dengan garis di ujung: Lewati bagian senyap. */
     val SkipSilence: ImageVector by lazy { line("SkipSilence", "M6 6l9 6-9 6z M19 6v12") }
 
+    /** Garis level dengan dua penanda: Samakan volume antar lagu. */
+    val Levels: ImageVector by lazy { line("Levels", "M4 12h16M8 7v10M16 5v14") }
+
     /** Gelombang suara: Kualitas audio. */
     val Waveform: ImageVector by lazy { line("Waveform", "M5 9v6M9 5v14M13 8v8M17 10v4M21 11v2") }
 

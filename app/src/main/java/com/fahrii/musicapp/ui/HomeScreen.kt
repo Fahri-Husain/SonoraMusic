@@ -137,7 +137,9 @@ fun HomeScreen(
     onSeeAllTrending: () -> Unit,
     listState: LazyListState,
     topInset: Dp,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Dipanggil tiap Beranda di-refresh dengan ditarik, mis. untuk memulihkan pemutar yang error. */
+    onPullRefresh: () -> Unit = {}
 ) {
     val state by viewModel.state.collectAsState()
     val artists by viewModel.artists.collectAsState()
@@ -160,7 +162,10 @@ fun HomeScreen(
 
     PullToRefreshBox(
         isRefreshing = state.isRefreshing,
-        onRefresh = viewModel::pullRefresh,
+        onRefresh = {
+            onPullRefresh()
+            viewModel.pullRefresh()
+        },
         state = pullState,
         modifier = modifier.fillMaxSize(),
         indicator = {

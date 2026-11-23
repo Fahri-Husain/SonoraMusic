@@ -35,6 +35,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val streamQuality: StateFlow<AudioQuality> = repo.streamQuality
     val downloadQuality: StateFlow<AudioQuality> = repo.downloadQuality
     val skipSilence: StateFlow<Boolean> = repo.skipSilence
+    val normalizeVolume: StateFlow<Boolean> = repo.normalizeVolume
     val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
     val shakeToSkip: StateFlow<Boolean> = repo.shakeToSkip
     val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
@@ -68,6 +69,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setDownloadQuality(quality: AudioQuality) = repo.setDownloadQuality(quality)
 
     fun setSkipSilence(enabled: Boolean) = repo.setSkipSilence(enabled)
+
+    fun setNormalizeVolume(enabled: Boolean) = repo.setNormalizeVolume(enabled)
 
     fun setEqualizerEnabled(enabled: Boolean) = repo.setEqualizerEnabled(enabled)
 

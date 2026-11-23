@@ -238,7 +238,8 @@ fun AppRoot(
                             onSeeAllForYou = { navController.navigate(ROUTE_FOR_YOU) },
                             onSeeAllNewReleases = { navController.navigate(ROUTE_NEW_RELEASES) },
                             onSeeAllTrending = { navController.navigate(ROUTE_TRENDING) },
-                            topInset = with(density) { headerHeightPx.toDp() }
+                            topInset = with(density) { headerHeightPx.toDp() },
+                            onPullRefresh = playerViewModel::recoverFromError
                         )
                     }
 
@@ -487,6 +488,7 @@ fun AppRoot(
                         val streamQuality by settingsViewModel.streamQuality.collectAsState()
                         val downloadQuality by settingsViewModel.downloadQuality.collectAsState()
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
+                        val normalizeVolume by settingsViewModel.normalizeVolume.collectAsState()
                         val shakeToSkip by settingsViewModel.shakeToSkip.collectAsState()
                         val lyricsFontSize by settingsViewModel.lyricsFontSize.collectAsState()
                         val lyricsBlur by settingsViewModel.lyricsBlur.collectAsState()
@@ -512,6 +514,8 @@ fun AppRoot(
                                 onStreamQualityChange = settingsViewModel::setStreamQuality,
                                 onDownloadQualityChange = settingsViewModel::setDownloadQuality,
                                 onSkipSilenceChange = settingsViewModel::setSkipSilence,
+                                normalizeVolume = normalizeVolume,
+                                onNormalizeVolumeChange = settingsViewModel::setNormalizeVolume,
                                 equalizerSummary = if (equalizer.enabled) equalizer.preset.label else "Mati",
                                 onOpenEqualizer = { navController.navigate(ROUTE_EQUALIZER) },
                                 shakeToSkip = shakeToSkip,
