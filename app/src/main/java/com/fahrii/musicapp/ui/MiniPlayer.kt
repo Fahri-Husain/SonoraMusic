@@ -111,7 +111,10 @@ fun MiniPlayer(
                 AsyncImage(
                     model = shown.thumbnailUrl,
                     contentDescription = null,
-                    modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp)),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .coverSharedElement(shown.url)
+                        .clip(CoverMorphShape),
                     contentScale = ContentScale.Crop
                 )
                 Spacer(Modifier.width(12.dp))

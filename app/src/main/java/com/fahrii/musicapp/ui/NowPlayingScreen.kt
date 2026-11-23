@@ -283,6 +283,11 @@ fun NowPlayingScreen(
     val currentOnSwipeDismiss by rememberUpdatedState(onSwipeDismiss)
     var dragY by remember { mutableFloatStateOf(0f) }
     var screenHeightPx by remember { mutableFloatStateOf(0f) }
+    // Seberapa jauh layar ditarik ke bawah (0..1, penuh di setengah tinggi layar). Dibaca di fase
+    // layout/draw saja (lewat lambda), jadi tidak memicu recompose tiap frame saat menggeser.
+    val dragProgress: () -> Float = {
+        if (screenHeightPx <= 0f) 0f else (dragY / (screenHeightPx * 0.5f)).coerceIn(0f, 1f)
+    }
 
     // Geser ke bawah di halaman lirik penuh = tutup lirik (seperti tombol kembali di sana), tapi
     // hanya setelah daftar lirik mentok di atas: selama masih bisa digulir, jari menggulir daftar.
@@ -349,11 +354,8 @@ fun NowPlayingScreen(
                 onDragStopped = { velocity ->
                     val shouldClose = dragY > screenHeightPx * 0.25f || velocity > 1500f
                     if (shouldClose) {
-                        animate(
-                            initialValue = dragY,
-                            targetValue = screenHeightPx,
-                            animationSpec = tween(220)
-                        ) { value, _ -> dragY = value }
+                        // Sama seperti tombol back: tutup lewat transisi cover ke mini player. Layar
+                        // tetap di posisi geserannya (tidak balik naik dulu) lalu lanjut keluar.
                         currentOnSwipeDismiss()
                     } else {
                         animate(
@@ -498,6 +500,10 @@ fun NowPlayingScreen(
             ) {
                 val side = minOf(maxWidth * 0.9f, maxHeight)
                 val sidePx = with(LocalDensity.current) { side.toPx() }
+                // Tombol di tepi cover muncul di akhir penerbangan cover, tergambar di atas cover (lihat CoverSharedTransition)
+                val edgeMoreProgress = rememberCoverEdgeProgress(0)
+                val edgePlaylistProgress = rememberCoverEdgeProgress(1)
+                val edgeQueueProgress = rememberCoverEdgeProgress(2)
                 // Geser cover: kanan ke kiri = lagu berikutnya, kiri ke kanan = lagu sebelumnya. Cover
                 // lagu tujuan ikut terlihat masuk dari sisi layar mengikuti jari (seperti carousel). Dilepas cukup jauh /
                 // cukup cepat -> meluncur penuh ke lagu tujuan; kalau belum -> kembali ke tengah.
@@ -660,9 +666,12 @@ fun NowPlayingScreen(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(CircleShape)
+                                        // Cover mengecil (sampai 65%) mengikuti geseran ke bawah
+                                        .coverDragShrink { 1f - 0.35f * dragProgress() }
+                                        .coverSharedElement(s.url)
+                                        .clip(CoverMorphShape)
                                         .background(Sonora.SurfaceHigh)
-                                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                                        .border(1.dp, Color.White.copy(alpha = 0.12f), CoverMorphShape)
                                 )
                                 // Tombol kecil tepat di garis tepi cover (pusat tombol di keliling lingkaran),
                                 // ikut beranimasi bersama cover. Tambah ke playlist di sudut 45° kanan bawah,
@@ -683,6 +692,8 @@ fun NowPlayingScreen(
                                             x = (radius + radius * cos(moreAngle) - halfButton).dp,
                                             y = (radius + radius * sin(moreAngle) - halfButton).dp
                                         )
+                                        .coverEdgeOverlay()
+                                        .coverEdgePop(edgeMoreProgress) { 1f - (dragProgress() / 0.24f).coerceIn(0f, 1f) }
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.MoreVert,
@@ -699,6 +710,8 @@ fun NowPlayingScreen(
                                             x = (radius + radius * cos(playlistAngle) - halfButton).dp,
                                             y = (radius + radius * sin(playlistAngle) - halfButton).dp
                                         )
+                                        .coverEdgeOverlay()
+                                        .coverEdgePop(edgePlaylistProgress) { 1f - (dragProgress() / 0.24f).coerceIn(0f, 1f) }
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.PlaylistAdd,
@@ -716,6 +729,8 @@ fun NowPlayingScreen(
                                             x = (radius + radius * cos(queueAngle) - halfButton).dp,
                                             y = (radius + radius * sin(queueAngle) - halfButton).dp
                                         )
+                                        .coverEdgeOverlay()
+                                        .coverEdgePop(edgeQueueProgress) { 1f - (dragProgress() / 0.24f).coerceIn(0f, 1f) }
                                 ) {
                                     Icon(
                                         imageVector = AppIcons.Queue,
