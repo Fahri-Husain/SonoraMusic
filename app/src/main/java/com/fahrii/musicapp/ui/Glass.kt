@@ -26,11 +26,17 @@ import androidx.compose.ui.graphics.RectangleShape
 // Satu tempat untuk nama tipe, supaya kalau import library beda cukup dibetulkan di file ini
 typealias GlassBackdrop = LayerBackdrop
 
-/** Dibuat sekali di AppRoot: gambar halaman di belakang yang akan "dibiaskan" oleh kaca. */
+/**
+ * Dibuat sekali di AppRoot: gambar halaman di belakang yang akan "dibiaskan" oleh kaca. Dasarnya
+ * mengikuti warna latar saat ini ([LocalSonoraBackground]), jadi kaca ikut bertema sampul.
+ */
 @Composable
-fun rememberGlassBackdrop(): GlassBackdrop = rememberLayerBackdrop {
-    drawRect(Sonora.Background)
-    drawContent()
+fun rememberGlassBackdrop(): GlassBackdrop {
+    val background = LocalSonoraBackground.current
+    return rememberLayerBackdrop {
+        drawRect(background())
+        drawContent()
+    }
 }
 
 /** Tandai halaman sebagai sumber gambar untuk kaca. */

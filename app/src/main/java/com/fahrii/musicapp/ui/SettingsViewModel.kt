@@ -38,6 +38,7 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     val normalizeVolume: StateFlow<Boolean> = repo.normalizeVolume
     val downloadWifiOnly: StateFlow<Boolean> = repo.downloadWifiOnly
     val shakeToSkip: StateFlow<Boolean> = repo.shakeToSkip
+    val albumTheme: StateFlow<Boolean> = repo.albumTheme
     val lyricsFontSize: StateFlow<LyricsFontSize> = repo.lyricsFontSize
     val lyricsBlur: StateFlow<Boolean> = repo.lyricsBlur
     val sleepTimerEndAt: StateFlow<Long> = repo.sleepTimerEndAt
@@ -85,6 +86,8 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
     fun setDownloadWifiOnly(enabled: Boolean) = repo.setDownloadWifiOnly(enabled)
 
     fun setShakeToSkip(enabled: Boolean) = repo.setShakeToSkip(enabled)
+
+    fun setAlbumTheme(enabled: Boolean) = repo.setAlbumTheme(enabled)
 
     fun setLyricsFontSize(size: LyricsFontSize) = repo.setLyricsFontSize(size)
 

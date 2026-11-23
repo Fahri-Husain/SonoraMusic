@@ -58,14 +58,14 @@ fun CoverCollageHeader(
     urls: List<String?>,
     modifier: Modifier = Modifier,
     /** Warna tujuan pudar di tepi bawah cover; samakan dengan latar halaman. */
-    fadeColor: Color = Sonora.Background,
+    fadeColor: Color = LocalSonoraPalette.current.background,
     overlay: @Composable ColumnScope.() -> Unit
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
             .aspectRatio(0.88f)
-            .background(Sonora.SurfaceHigh)
+            .background(LocalSonoraPalette.current.surfaceHigh)
     ) {
         if (urls.size >= 4) {
             Column(modifier = Modifier.fillMaxSize()) {

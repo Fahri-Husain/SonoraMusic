@@ -72,6 +72,10 @@ class SettingsRepository private constructor(context: Context) {
     /** Goyang ponsel untuk lagu berikutnya (hanya saat aplikasi terbuka). Bawaan: mati. */
     val shakeToSkip: StateFlow<Boolean> = _shakeToSkip.asStateFlow()
 
+    private val _albumTheme = MutableStateFlow(prefs.getBoolean(KEY_ALBUM_THEME, true))
+    /** Warna latar dan aksen app mengikuti sampul lagu yang sedang diputar. Bawaan: nyala. */
+    val albumTheme: StateFlow<Boolean> = _albumTheme.asStateFlow()
+
     private val _lyricsFontSize = MutableStateFlow(
         runCatching { LyricsFontSize.valueOf(prefs.getString(KEY_LYRICS_FONT_SIZE, null) ?: "") }
             .getOrDefault(LyricsFontSize.MEDIUM)
@@ -167,6 +171,11 @@ class SettingsRepository private constructor(context: Context) {
         prefs.edit().putBoolean(KEY_SHAKE_TO_SKIP, enabled).apply()
     }
 
+    fun setAlbumTheme(enabled: Boolean) {
+        _albumTheme.value = enabled
+        prefs.edit().putBoolean(KEY_ALBUM_THEME, enabled).apply()
+    }
+
     fun setLyricsFontSize(size: LyricsFontSize) {
         _lyricsFontSize.value = size
         prefs.edit().putString(KEY_LYRICS_FONT_SIZE, size.name).apply()
@@ -255,6 +264,7 @@ class SettingsRepository private constructor(context: Context) {
         private const val KEY_NORMALIZE_VOLUME = "normalize_volume"
         private const val KEY_DOWNLOAD_WIFI_ONLY = "download_wifi_only"
         private const val KEY_SHAKE_TO_SKIP = "shake_to_skip"
+        private const val KEY_ALBUM_THEME = "album_theme"
         private const val KEY_LYRICS_FONT_SIZE = "lyrics_font_size"
         private const val KEY_LYRICS_BLUR = "lyrics_blur"
         private const val KEY_EQ_ENABLED = "eq_enabled"

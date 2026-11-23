@@ -53,6 +53,7 @@ fun MiniPlayer(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val palette = LocalSonoraPalette.current
     val song = state.currentSong ?: return
 
     val artist = artistLabel(song)
@@ -137,12 +138,17 @@ fun MiniPlayer(
         // Ukuran tetap (sama dengan tombol), supaya pil tidak berubah tinggi/lebar saat memuat
         Box(modifier = Modifier.padding(end = 12.dp).size(48.dp), contentAlignment = Alignment.Center) {
             if (state.isBuffering) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    strokeWidth = 2.dp,
+                    color = palette.accent
+                )
             } else {
                 IconButton(onClick = onToggle) {
                     Icon(
                         imageVector = if (state.isPlaying) AppIcons.Pause else AppIcons.Play,
-                        contentDescription = if (state.isPlaying) "Pause" else "Play"
+                        contentDescription = if (state.isPlaying) "Pause" else "Play",
+                        tint = palette.accent
                     )
                 }
             }

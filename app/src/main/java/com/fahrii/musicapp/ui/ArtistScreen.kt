@@ -144,7 +144,7 @@ fun ArtistScreen(
                     Text(
                         text = "Lagu artis ini tidak ditemukan.",
                         fontSize = 14.sp,
-                        color = Sonora.TextSecondary,
+                        color = LocalSonoraPalette.current.textSecondary,
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
                     )
                 }
@@ -257,6 +257,7 @@ private fun ArtistHero(
     onListen: () -> Unit,
     onTitleBottom: (Float) -> Unit
 ) {
+    val palette = LocalSonoraPalette.current
     // 0f = bio ringkas, 1f = bio terbuka (About diklik): foto digelapkan lebih awal dan lebih pekat
     val dim by animateFloatAsState(
         targetValue = if (bioExpanded) 1f else 0f,
@@ -282,9 +283,9 @@ private fun ArtistHero(
                 .background(
                     Brush.verticalGradient(
                         0f to Color.Black.copy(alpha = 0.30f),
-                        lerp(0.30f, 0.12f, dim) to Sonora.Background.copy(alpha = 0.40f * dim),
-                        lerp(0.55f, 0.38f, dim) to Sonora.Background.copy(alpha = lerp(0.55f, 0.88f, dim)),
-                        0.95f to Sonora.Background
+                        lerp(0.30f, 0.12f, dim) to palette.background.copy(alpha = 0.40f * dim),
+                        lerp(0.55f, 0.38f, dim) to palette.background.copy(alpha = lerp(0.55f, 0.88f, dim)),
+                        0.95f to palette.background
                     )
                 )
         )
@@ -301,7 +302,7 @@ private fun ArtistHero(
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 1.5.sp,
-                color = Sonora.TextSecondary,
+                color = palette.textSecondary,
                 style = HeroTextShadow
             )
             Spacer(Modifier.height(4.dp))
@@ -317,7 +318,7 @@ private fun ArtistHero(
                 Text(
                     text = "${compactCount(state.subscribers)} subscribers",
                     fontSize = 13.sp,
-                    color = Sonora.TextSecondary,
+                    color = palette.textSecondary,
                     style = HeroTextShadow
                 )
             }
@@ -411,7 +412,7 @@ private fun LoadingRow(label: String) {
     ) {
         CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
         Spacer(Modifier.width(12.dp))
-        Text(label, fontSize = 14.sp, color = Sonora.TextSecondary)
+        Text(label, fontSize = 14.sp, color = LocalSonoraPalette.current.textSecondary)
     }
 }
 
@@ -425,6 +426,7 @@ private fun PopularSongRow(
 ) {
     val thumbShape = RoundedCornerShape(8.dp)
     val songMenu = LocalSongMenu.current
+    val palette = LocalSonoraPalette.current
 
     Row(
         modifier = Modifier
@@ -436,7 +438,7 @@ private fun PopularSongRow(
         Text(
             text = "%02d".format(number),
             fontSize = 13.sp,
-            color = Sonora.TextSecondary,
+            color = palette.textSecondary,
             modifier = Modifier.width(30.dp)
         )
         if (isCurrent && isPlaying) {
@@ -449,8 +451,8 @@ private fun PopularSongRow(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(thumbShape)
-                    .background(Sonora.Surface)
-                    .border(1.dp, Sonora.Border, thumbShape)
+                    .background(palette.surface)
+                    .border(1.dp, palette.border, thumbShape)
             )
         }
         Spacer(Modifier.width(14.dp))
@@ -466,7 +468,7 @@ private fun PopularSongRow(
                 Text(
                     text = artistLabel(song),
                     fontSize = 13.sp,
-                    color = Sonora.TextSecondary,
+                    color = palette.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = mod
@@ -482,6 +484,7 @@ private fun PopularSongRow(
 @Composable
 internal fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
+    val palette = LocalSonoraPalette.current
     Column(
         modifier = Modifier
             .width(140.dp)
@@ -495,8 +498,8 @@ internal fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
             modifier = Modifier
                 .size(140.dp)
                 .clip(shape)
-                .background(Sonora.SurfaceHigh)
-                .border(1.dp, Sonora.Border, shape)
+                .background(palette.surfaceHigh)
+                .border(1.dp, palette.border, shape)
         )
         Text(
             text = album.title,
@@ -509,7 +512,7 @@ internal fun AlbumTile(album: ArtistAlbum, onClick: () -> Unit) {
         Text(
             text = album.artist,
             fontSize = 12.sp,
-            color = Sonora.TextSecondary,
+            color = palette.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

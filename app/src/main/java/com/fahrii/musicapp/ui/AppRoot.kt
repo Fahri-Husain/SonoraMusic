@@ -56,8 +56,11 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.fahrii.musicapp.data.ArtistAlbum
+import com.fahrii.musicapp.data.SettingsRepository
 import com.fahrii.musicapp.data.isAlbumEntry
 import com.fahrii.musicapp.data.toAlbumRef
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import androidx.compose.foundation.layout.padding
 import android.net.Uri
 import android.widget.Toast
@@ -95,6 +98,27 @@ private fun tabSlideDirection(from: String?, to: String?): Int = when {
 
 @Composable
 fun AppRoot(
+    playerViewModel: PlayerViewModel,
+    libraryViewModel: LibraryViewModel
+) {
+    // Hanya sampul lagu yang diamati di sini, supaya pembungkus ini tidak recompose tiap state pemutar berubah
+    val coverUrl by remember(playerViewModel) {
+        playerViewModel.state.map { it.currentSong?.thumbnailUrl }.distinctUntilChanged()
+    }.collectAsState(initial = null)
+
+    // Pengaturan "Tema dari sampul": mati = tanpa sampul, jadi palet kembali ke warna bawaan
+    val context = LocalContext.current
+    val albumThemeEnabled by remember(context) {
+        SettingsRepository.getInstance(context.applicationContext).albumTheme
+    }.collectAsState()
+
+    AlbumThemeHost(coverUrl = if (albumThemeEnabled) coverUrl else null) {
+        AppRootContent(playerViewModel, libraryViewModel)
+    }
+}
+
+@Composable
+private fun AppRootContent(
     playerViewModel: PlayerViewModel,
     libraryViewModel: LibraryViewModel
 ) {
@@ -175,9 +199,10 @@ fun AppRoot(
         )
     }
 
+    // Latar digambar oleh AlbumThemeHost (mengikuti sampul), jadi Surface ini transparan
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
+        color = androidx.compose.ui.graphics.Color.Transparent,
         contentColor = MaterialTheme.colorScheme.onBackground
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -490,6 +515,7 @@ fun AppRoot(
                         val skipSilence by settingsViewModel.skipSilence.collectAsState()
                         val normalizeVolume by settingsViewModel.normalizeVolume.collectAsState()
                         val shakeToSkip by settingsViewModel.shakeToSkip.collectAsState()
+                        val albumTheme by settingsViewModel.albumTheme.collectAsState()
                         val lyricsFontSize by settingsViewModel.lyricsFontSize.collectAsState()
                         val lyricsBlur by settingsViewModel.lyricsBlur.collectAsState()
                         val sleepTimerEndAt by settingsViewModel.sleepTimerEndAt.collectAsState()
@@ -520,6 +546,8 @@ fun AppRoot(
                                 onOpenEqualizer = { navController.navigate(ROUTE_EQUALIZER) },
                                 shakeToSkip = shakeToSkip,
                                 onShakeToSkipChange = settingsViewModel::setShakeToSkip,
+                                albumTheme = albumTheme,
+                                onAlbumThemeChange = settingsViewModel::setAlbumTheme,
                                 lyricsFontSize = lyricsFontSize,
                                 onLyricsFontSizeChange = settingsViewModel::setLyricsFontSize,
                                 lyricsBlur = lyricsBlur,

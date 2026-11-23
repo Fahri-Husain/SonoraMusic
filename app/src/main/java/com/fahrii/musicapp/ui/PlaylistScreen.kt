@@ -169,14 +169,16 @@ fun PlaylistScreen(
 
     // Latar halaman: gradasi dari warna dominan cover (gelap), bukan hitam polos. Nilai animasinya
     // sengaja dibaca di dalam draw/item saja supaya seluruh layar tidak ikut recompose tiap frame.
-    val dominant = rememberDominantColor(coverUrls)
+    // Cover yang belum terbaca atau abu-abu tidak menghasilkan gradasi hitam: pakai warna tema saat ini
+    val palette = LocalSonoraPalette.current
+    val dominant = rememberDominantColor(coverUrls)?.takeUnless { it.isGrayish() }
     val tintTop = animateColorAsState(
-        targetValue = dominant?.asBackdrop(0.26f) ?: Sonora.Background,
+        targetValue = dominant?.asBackdrop(0.26f) ?: palette.surfaceHigh,
         animationSpec = tween(600),
         label = "playlistTintTop"
     )
     val tintBottom = animateColorAsState(
-        targetValue = dominant?.asBackdrop(0.12f) ?: Sonora.Background,
+        targetValue = dominant?.asBackdrop(0.12f) ?: palette.background,
         animationSpec = tween(600),
         label = "playlistTintBottom"
     )

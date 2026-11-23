@@ -176,6 +176,8 @@ fun SettingsScreen(
     onOpenEqualizer: () -> Unit,
     shakeToSkip: Boolean,
     onShakeToSkipChange: (Boolean) -> Unit,
+    albumTheme: Boolean,
+    onAlbumThemeChange: (Boolean) -> Unit,
     lyricsFontSize: LyricsFontSize,
     onLyricsFontSizeChange: (LyricsFontSize) -> Unit,
     lyricsBlur: Boolean,
@@ -361,6 +363,21 @@ fun SettingsScreen(
                                     checked = shakeToSkip,
                                     onCheckedChange = onShakeToSkipChange,
                                     label = "Goyang untuk ganti lagu"
+                                )
+                            }
+                        )
+                    }
+
+                    SettingsSection(title = "Tampilan") {
+                        SettingsItem(
+                            icon = SettingsIcons.Droplet,
+                            title = "Tema dari sampul",
+                            subtitle = "Warna latar dan aksen mengikuti lagu yang diputar",
+                            trailing = {
+                                SonoraSwitch(
+                                    checked = albumTheme,
+                                    onCheckedChange = onAlbumThemeChange,
+                                    label = "Tema dari sampul"
                                 )
                             }
                         )

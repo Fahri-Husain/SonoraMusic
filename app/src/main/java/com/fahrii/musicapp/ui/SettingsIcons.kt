@@ -105,6 +105,11 @@ internal object SettingsIcons {
     /** Lonceng: Notifikasi pemutar. */
     val Bell: ImageVector by lazy { line("Bell", "M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z", "M10 20a2 2 0 0 0 4 0") }
 
+    /** Tetesan: Tema dari sampul. */
+    val Droplet: ImageVector by lazy {
+        line("Droplet", "M12 3.5C12 3.5 6 9.8 6 14a6 6 0 0 0 12 0c0-4.2-6-10.5-6-10.5z")
+    }
+
     // ---- Pembantu ----
 
     private fun line(name: String, vararg paths: String): ImageVector =

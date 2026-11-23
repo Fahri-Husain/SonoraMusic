@@ -169,12 +169,13 @@ fun HomeScreen(
         state = pullState,
         modifier = modifier.fillMaxSize(),
         indicator = {
+            val palette = LocalSonoraPalette.current
             PullToRefreshDefaults.Indicator(
                 state = pullState,
                 isRefreshing = state.isRefreshing,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = topInset),
-                containerColor = Sonora.SurfaceHigh,
-                color = Sonora.Accent
+                containerColor = palette.surfaceHigh,
+                color = palette.accent
             )
         }
     ) {
@@ -195,7 +196,7 @@ fun HomeScreen(
                         Text(
                             text = state.error ?: "",
                             fontSize = 13.sp,
-                            color = Sonora.TextSecondary,
+                            color = LocalSonoraPalette.current.textSecondary,
                             modifier = Modifier.weight(1f)
                         )
                         TextButton(onClick = viewModel::refresh) { Text("Coba lagi") }
@@ -318,16 +319,22 @@ private fun rememberGlowPosition(): State<Float> {
     )
 }
 
+/** Campur [base] ke warna sampul sebanyak alpha [album] (0 = tetap [base], 1 = penuh warna sampul). */
+private fun withAlbumGlow(base: Color, album: Color): Color =
+    if (album.alpha <= 0f) base else lerp(base, album.copy(alpha = 1f), album.alpha)
+
 /** Gradasi hangat seperti di Replay, tapi pelan-pelan berganti warna mengitari palet. */
 @Composable
 private fun HomeGlow(position: State<Float>, modifier: Modifier = Modifier) {
+    val albumGlow = LocalSonoraPalette.current.glow
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(380.dp)
             .drawBehind {
-                val top = glowColor(position.value)
-                val middle = glowColor(position.value + 1f)
+                // Ada lagu diputar: gradasi beralih dari warna berputar bawaan ke warna sampul
+                val top = withAlbumGlow(glowColor(position.value), albumGlow)
+                val middle = withAlbumGlow(glowColor(position.value + 1f), albumGlow)
                 drawRect(
                     Brush.verticalGradient(
                         listOf(
@@ -430,6 +437,7 @@ private fun QuickPickCard(
 ) {
     val cardShape = RoundedCornerShape(QuickPickRadius)
     val panelShape = remember { StepPanelShape(QuickPickRadius - QuickPickBezel) }
+    val albumGlow = LocalSonoraPalette.current.glow
 
     Box(
         modifier = modifier
@@ -438,8 +446,8 @@ private fun QuickPickCard(
             .drawBehind {
                 val r = CornerRadius(QuickPickRadius.toPx())
                 val frontH = QuickPickFrontHeight.toPx()
-                val c1 = glowColor(glowPosition.value)
-                val c2 = glowColor(glowPosition.value + 1f)
+                val c1 = withAlbumGlow(glowColor(glowPosition.value), albumGlow)
+                val c2 = withAlbumGlow(glowColor(glowPosition.value + 1f), albumGlow)
                 drawRoundRect(Color.Black, size = size, cornerRadius = r)
                 drawRoundRect(
                     brush = Brush.horizontalGradient(
@@ -464,8 +472,8 @@ private fun QuickPickCard(
                 .height(QuickPickPanelHeight)
                 .clip(panelShape)
                 .drawBehind {
-                    val c1 = glowColor(glowPosition.value)
-                    val c2 = glowColor(glowPosition.value + 1f)
+                    val c1 = withAlbumGlow(glowColor(glowPosition.value), albumGlow)
+                    val c2 = withAlbumGlow(glowColor(glowPosition.value + 1f), albumGlow)
                     drawRect(Brush.linearGradient(listOf(c1, c2), Offset.Zero, Offset(size.width, size.height)))
                 }
         ) {
@@ -531,7 +539,7 @@ private fun QuickPickCard(
                 Box(modifier = Modifier.width(130.dp).height(11.dp).shimmerBackground(RoundedCornerShape(6.dp)))
             } else {
                 Text(pick.label, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(pick.subtitle, fontSize = 12.sp, color = Sonora.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(pick.subtitle, fontSize = 12.sp, color = LocalSonoraPalette.current.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -661,6 +669,7 @@ private fun SongCardSkeleton() {
 @Composable
 private fun SongCard(song: Song, onClick: () -> Unit) {
     val shape = RoundedCornerShape(14.dp)
+    val palette = LocalSonoraPalette.current
 
     Column(modifier = Modifier.width(132.dp).clickable(onClick = onClick)) {
         AsyncImage(
@@ -670,8 +679,8 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
             modifier = Modifier
                 .size(132.dp)
                 .clip(shape)
-                .background(Sonora.Surface)
-                .border(1.dp, Sonora.Border, shape)
+                .background(palette.surface)
+                .border(1.dp, palette.border, shape)
         )
         Spacer(Modifier.height(8.dp))
         Text(
@@ -686,7 +695,7 @@ private fun SongCard(song: Song, onClick: () -> Unit) {
             text = if (song.isAlbumEntry()) "Album • ${song.title}" else song.title,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Sonora.TextSecondary,
+            color = palette.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Clip,
             modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE)
@@ -731,7 +740,7 @@ private fun GenrePill(genre: Genre, onClick: () -> Unit, modifier: Modifier = Mo
         modifier = modifier
             .size(width = 112.dp, height = 44.dp)
             .clip(shape)
-            .background(Sonora.Surface)
+            .background(LocalSonoraPalette.current.surface)
             .border(1.dp, borderBrush, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp),
@@ -776,6 +785,7 @@ private fun ArtistRowSkeleton(rank: Int) {
 
 @Composable
 private fun ArtistRow(rank: Int, artist: ArtistStat, subscribers: Long?, onClick: () -> Unit) {
+    val palette = LocalSonoraPalette.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -797,7 +807,7 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, subscribers: Long?, onClick
                 model = artist.imageUrl,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(52.dp).clip(CircleShape).background(Sonora.SurfaceHigh)
+                modifier = Modifier.size(52.dp).clip(CircleShape).background(palette.surfaceHigh)
             )
             Spacer(Modifier.width(12.dp))
             Column {
@@ -813,7 +823,7 @@ private fun ArtistRow(rank: Int, artist: ArtistStat, subscribers: Long?, onClick
                     Text(
                         text = "${compactCount(subscribers)} subscribers",
                         fontSize = 12.sp,
-                        color = Sonora.TextSecondary,
+                        color = palette.textSecondary,
                         maxLines = 1
                     )
                 }
