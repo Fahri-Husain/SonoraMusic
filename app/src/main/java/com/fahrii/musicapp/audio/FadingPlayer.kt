@@ -8,7 +8,6 @@ import androidx.media3.common.FlagSet
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.math.abs
 
@@ -27,7 +26,7 @@ import kotlin.math.abs
  * dari main thread.
  */
 @OptIn(UnstableApi::class)
-class FadingPlayer(private val exo: ExoPlayer) : ForwardingPlayer(exo) {
+class FadingPlayer(private val exo: Player) : ForwardingPlayer(exo) {
 
     /** Pengali volume dari fade Play/Pause, 0..1. */
     @Volatile

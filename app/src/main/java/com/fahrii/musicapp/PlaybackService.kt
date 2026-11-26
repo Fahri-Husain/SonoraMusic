@@ -5,25 +5,21 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.annotation.OptIn
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.ResolvingDataSource
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
-import com.fahrii.musicapp.audio.CrossfadeFilterAudioProcessor
-import com.fahrii.musicapp.audio.DjFilterRenderersFactory
 import com.fahrii.musicapp.audio.EqualizerController
 import com.fahrii.musicapp.audio.FadingPlayer
-import com.fahrii.musicapp.audio.LoudnessNormalizerAudioProcessor
+import com.fahrii.musicapp.audio.QueuePlayer
+import com.fahrii.musicapp.audio.TrackPlayerFactory
 import com.fahrii.musicapp.data.DownloadRepository
 import com.fahrii.musicapp.data.LibraryRepository
 import com.fahrii.musicapp.data.MusicRepository
@@ -41,7 +37,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.IOException
-import androidx.media3.datasource.DefaultHttpDataSource
 
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
@@ -108,27 +103,27 @@ class PlaybackService : MediaSessionService() {
             resolver
         )
 
-        // Filter low/high-pass untuk transisi ala DJ; hanya aktif selama crossfade (lihat CrossfadeManager)
-        val djFilter = CrossfadeFilterAudioProcessor()
+        // Equalizer + bass boost mengikuti Pengaturan. Dipasang ke setiap pemutar lagu oleh
+        // TrackPlayerFactory (dan dilepas saat pemutarnya dirilis), jadi lagu yang memudar keluar
+        // saat crossfade tetap terdengar sama dengan lagu yang masuk.
+        val eqController = EqualizerController(settings, settingsScope)
+        equalizer = eqController
 
-        // Penyama volume antar lagu; menyala/mati mengikuti Pengaturan (lihat di bawah)
-        val normalizer = LoudnessNormalizerAudioProcessor().also { it.enabled = settings.normalizeVolume.value }
+        // Satu ExoPlayer per lagu. Filter DJ dan penyama volume juga milik tiap lagu, jadi
+        // tidak ada lagi state yang perlu diwariskan antar pemutar saat crossfade.
+        val factory = TrackPlayerFactory(
+            this, dataSourceFactory, eqController,
+            initialNormalize = settings.normalizeVolume.value,
+            initialSkipSilence = settings.skipSilence.value
+        )
 
-        val player = ExoPlayer.Builder(this, DjFilterRenderersFactory(this, djFilter, normalizer))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                    .setUsage(C.USAGE_MEDIA)
-                    .build(),
-                /* handleAudioFocus = */ true
-            )
-            .setHandleAudioBecomingNoisy(true)
-            .build()
+        // Pemutar virtual berantrean untuk MediaSession: memegang antrean, dan memainkan tiap lagu
+        // lewat pemutarnya sendiri. Lagu berikutnya sudah disiapkan sebelum giliran tiba.
+        val queue = QueuePlayer(this, factory)
 
         // Play/Pause ala Spotify: pause turun halus dulu, play naik halus. Dipasang sebagai pemutar
         // sesi, jadi tombol app, notifikasi, widget, dan headset semuanya ikut kena fade.
-        val fadingPlayer = FadingPlayer(player)
+        val fadingPlayer = FadingPlayer(queue)
 
         val lib = LibraryRepository.getInstance(this)
         library = lib
@@ -168,25 +163,27 @@ class PlaybackService : MediaSessionService() {
             .build()
 
         // Ikon Hati ikut berubah saat lagu ganti atau daftar Favorit berubah (dari app maupun notifikasi)
-        player.addListener(object : Player.Listener {
+        queue.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 refreshCustomLayout()
             }
         })
         settingsScope.launch { lib.state.collect { refreshCustomLayout() } }
 
-        // Lewati bagian senyap mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar
+        // Lewati bagian senyap mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar.
+        // Berlaku ke semua pemutar yang sedang hidup, dan diingat untuk pemutar yang dibuat berikutnya.
         settingsScope.launch {
-            settings.skipSilence.collect { player.skipSilenceEnabled = it }
+            settings.skipSilence.collect { factory.setSkipSilence(it) }
         }
 
         // Samakan volume antar lagu mengikuti Pengaturan, termasuk saat diubah ketika lagu sedang diputar
         settingsScope.launch {
-            settings.normalizeVolume.collect { normalizer.enabled = it }
+            settings.normalizeVolume.collect { factory.setNormalize(it) }
         }
 
-        // Jeda otomatis saat headset dicabut atau Bluetooth terputus: selalu aktif, tidak ada pengaturannya
-        player.setHandleAudioBecomingNoisy(true)
+        // Jeda otomatis saat headset dicabut atau Bluetooth terputus: selalu aktif, tidak ada
+        // pengaturannya. Dipasang di setiap pemutar oleh TrackPlayerFactory; QueuePlayer
+        // mengikuti status jeda dari pemutar aktif.
 
         // Timer tidur: saat waktunya habis, pemutar dijeda. collectLatest membatalkan hitungan
         // lama otomatis kalau timer diganti atau dimatikan.
@@ -206,21 +203,15 @@ class PlaybackService : MediaSessionService() {
         }
 
         // Widget layar utama ikut lagu yang sedang diputar
-        widgetUpdater = WidgetUpdater(this, player, settingsScope).also { it.start() }
+        widgetUpdater = WidgetUpdater(this, queue, settingsScope).also { it.start() }
 
-        // Equalizer + bass boost mengikuti Pengaturan. Didaftarkan juga ke pemutar kedua milik crossfade
-        // (lewat parameter di bawah) supaya lagu yang memudar keluar tetap terdengar sama.
-        val eqController = EqualizerController(settings, settingsScope).also { it.attach(player) }
-        equalizer = eqController
+        // Crossfade antar lagu (menyala lewat Pengaturan). Lagu berikutnya sudah siap lebih dulu,
+        // jadi manager ini hanya mengatur volume dua pemutar, tanpa sinkronisasi posisi.
+        crossfade = CrossfadeManager(queue, settings)
 
-        // Crossfade antar lagu (menyala lewat Pengaturan); memakai sumber data yang sama dengan pemutar utama
-        crossfade = CrossfadeManager(
-            this, player, dataSourceFactory, settings, djFilter, eqController, normalizer,
-            userGain = { fadingPlayer.gain }
-        )
-        // Volume pemutar utama dipegang crossfade selama transisi; fade Play/Pause lewat sini
-        // supaya keduanya tidak saling menimpa
-        fadingPlayer.gainApplier = { g -> crossfade?.applyUserGain(g) ?: run { player.volume = g } }
+        // Fade Play/Pause mengatur volume dasar lewat QueuePlayer, yang mengalikannya dengan
+        // faktor fade crossfade, jadi keduanya tidak saling menimpa
+        fadingPlayer.gainApplier = { g -> queue.setUserGain(g) }
     }
 
     /**
@@ -293,13 +284,15 @@ class PlaybackService : MediaSessionService() {
         settingsScope.cancel()
         crossfade?.release()
         crossfade = null
-        equalizer?.release()
-        equalizer = null
+        // Rilis pemutar sesi dulu: QueuePlayer merilis semua pemutar lagu dan melepas equalizer
+        // dari tiap pemutar. Setelah itu baru equalizer-nya sendiri dirilis.
         mediaSession?.run {
             player.release()
             release()
             mediaSession = null
         }
+        equalizer?.release()
+        equalizer = null
         super.onDestroy()
     }
 }

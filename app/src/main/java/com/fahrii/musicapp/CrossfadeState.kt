@@ -13,18 +13,15 @@ import kotlinx.coroutines.flow.asStateFlow
 object CrossfadeState {
     private val _isCrossfading = MutableStateFlow(false)
 
-    /**
-     * True hanya selama dua lagu benar-benar saling memudar (fase FADING). Fase sinkronisasi dan
-     * serah-terima sebelumnya tidak terdengar sebagai transisi, jadi tidak dihitung.
-     */
+    /** True hanya selama dua lagu benar-benar saling memudar. */
     val isCrossfading: StateFlow<Boolean> = _isCrossfading.asStateFlow()
 
     private val _isPreparing = MutableStateFlow(false)
 
     /**
-     * True selama fase sinkronisasi dan serah-terima (beberapa detik sebelum fade), saat UI masih
-     * menampilkan lagu lama. Hanya dipakai untuk memunculkan label "Crossfading" lebih awal di lagu
-     * lama; warna pelangi bar progres tetap menunggu [isCrossfading].
+     * True beberapa detik sebelum fade, saat UI masih menampilkan lagu lama dan transisi sudah
+     * pasti terjadi. Hanya dipakai untuk memunculkan label "Crossfading" lebih awal di lagu lama;
+     * warna pelangi bar progres tetap menunggu [isCrossfading].
      */
     val isPreparing: StateFlow<Boolean> = _isPreparing.asStateFlow()
 
