@@ -31,22 +31,16 @@ kotlin {
         }
 
         // Kode khusus JVM (NewPipe, OkHttp) yang dipakai sama persis oleh Android dan desktop.
-        // Folder ini dikompilasi dua kali (sekali per target), jadi dependensinya dipasang di keduanya.
-        val jvmSharedDir = "src/jvmShared/kotlin"
-
-        jvmMain {
-            kotlin.srcDir(jvmSharedDir)
+        // Intermediate source set: dikompilasi sekali per target tanpa mendaftarkan folder ke dua source set.
+        val jvmSharedMain by creating {
+            dependsOn(commonMain.get())
+            kotlin.srcDir("src/jvmShared/kotlin")
             dependencies {
                 implementation(libs.newpipe.extractor)
                 implementation(libs.okhttp)
             }
         }
-        getByName("androidMain") {
-            kotlin.srcDir(jvmSharedDir)
-            dependencies {
-                implementation(libs.newpipe.extractor)
-                implementation(libs.okhttp)
-            }
-        }
+        jvmMain.get().dependsOn(jvmSharedMain)
+        getByName("androidMain").dependsOn(jvmSharedMain)
     }
 }
