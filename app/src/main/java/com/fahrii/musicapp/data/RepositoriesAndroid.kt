@@ -2,6 +2,8 @@ package com.fahrii.musicapp.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 
 @Volatile
 private var historyInstance: HistoryRepository? = null
@@ -52,3 +54,52 @@ fun SettingsRepository.Companion.getInstance(context: Context): SettingsReposito
             )
         ).also { settingsInstance = it }
     }
+@Volatile
+private var albumInstance: AlbumRepository? = null
+
+@Volatile
+private var artistImageInstance: ArtistImageRepository? = null
+
+@Volatile
+private var quickPickInstance: QuickPickRepository? = null
+
+@Volatile
+private var downloadInstance: DownloadRepository? = null
+
+fun AlbumRepository.Companion.getInstance(context: Context): AlbumRepository =
+    albumInstance ?: synchronized(AlbumRepository) {
+        albumInstance ?: AlbumRepository(context.applicationContext.filesDir)
+            .also { albumInstance = it }
+    }
+
+fun ArtistImageRepository.Companion.getInstance(context: Context): ArtistImageRepository =
+    artistImageInstance ?: synchronized(ArtistImageRepository) {
+        artistImageInstance ?: ArtistImageRepository(context.applicationContext.filesDir)
+            .also { artistImageInstance = it }
+    }
+
+fun QuickPickRepository.Companion.getInstance(context: Context): QuickPickRepository =
+    quickPickInstance ?: synchronized(QuickPickRepository) {
+        quickPickInstance ?: QuickPickRepository(context.applicationContext.filesDir)
+            .also { quickPickInstance = it }
+    }
+
+fun DownloadRepository.Companion.getInstance(context: Context): DownloadRepository =
+    downloadInstance ?: synchronized(DownloadRepository) {
+        val app = context.applicationContext
+        downloadInstance ?: DownloadRepository(
+            filesDir = app.filesDir,
+            settings = SettingsRepository.getInstance(app),
+            isOnMobileDataOnly = { isOnMobileDataOnly(app) }
+        ).also { downloadInstance = it }
+    }
+
+/** Perangkat hanya tersambung lewat data seluler (bukan Wi-Fi/Ethernet). Jaringan tak dikenal dianggap boleh. */
+private fun isOnMobileDataOnly(context: Context): Boolean {
+    val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        ?: return false
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+    return caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) &&
+            !caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+            !caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+}

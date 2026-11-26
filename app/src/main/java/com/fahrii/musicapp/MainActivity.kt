@@ -17,6 +17,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.fahrii.musicapp.data.ArtistNames
 import com.fahrii.musicapp.data.SettingsRepository
 import com.fahrii.musicapp.ui.AppRoot
 import com.fahrii.musicapp.ui.AppTypography
@@ -58,7 +59,7 @@ class MainActivity : ComponentActivity() {
         )
         requestNotificationPermissionIfNeeded()
         // Muat nama artis kolaborasi dari file sebelum layar pertama tampil, supaya tidak ada delay
-        com.fahrii.musicapp.data.ArtistNames.init(applicationContext)
+        ArtistNames.init(applicationContext.filesDir)
 
         // Sensor hanya aktif selagi aplikasi terbuka (RESUMED) dan pengaturannya menyala.
         // collectLatest membatalkan blok lama saat pengaturan berubah, jadi sensor ikut berhenti.

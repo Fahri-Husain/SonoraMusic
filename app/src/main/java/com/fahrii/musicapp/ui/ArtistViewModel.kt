@@ -7,6 +7,7 @@ import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.ArtistImageRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.getInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

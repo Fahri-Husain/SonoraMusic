@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.AlbumRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.getInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

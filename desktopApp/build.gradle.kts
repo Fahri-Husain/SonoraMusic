@@ -15,6 +15,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.foundation)
     implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.jna)
 }
 
 compose.desktop {
@@ -23,6 +24,9 @@ compose.desktop {
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
 
         nativeDistributions {
+            // Isi folder resources/ ikut dikemas dan terbaca lewat compose.application.resources.dir
+            appResourcesRootDir.set(project.layout.projectDirectory.dir("resources"))
+
             targetFormats(TargetFormat.Msi, TargetFormat.Exe)
             packageName = "SonoraMusic"
             packageVersion = "1.0.0"
