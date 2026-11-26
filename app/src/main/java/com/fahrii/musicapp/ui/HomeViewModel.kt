@@ -11,6 +11,7 @@ import com.fahrii.musicapp.data.HistoryRepository
 import com.fahrii.musicapp.data.MusicRepository
 import com.fahrii.musicapp.data.QuickPickRepository
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.getInstance
 import com.fahrii.musicapp.data.identityKey
 import com.fahrii.musicapp.data.isAlbumEntry
 import kotlinx.coroutines.Job

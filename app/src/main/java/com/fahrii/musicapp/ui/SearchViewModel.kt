@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.fahrii.musicapp.data.ArtistAlbum
 import com.fahrii.musicapp.data.ArtistResult
 import com.fahrii.musicapp.data.MusicRepository
-import com.fahrii.musicapp.data.SearchHistoryRepository
 import com.fahrii.musicapp.data.Song
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -18,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.fahrii.musicapp.data.SearchHistoryRepository
+import com.fahrii.musicapp.data.getInstance
 
 data class SearchUiState(
     val query: String = "",

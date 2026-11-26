@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import com.fahrii.musicapp.data.HistoryRepository
 import com.fahrii.musicapp.data.ReplayRepository
+import com.fahrii.musicapp.data.getInstance
 
 data class PlayerUiState(
     val currentSong: Song? = null,

@@ -17,6 +17,7 @@ import com.fahrii.musicapp.data.MonthStats
 import com.fahrii.musicapp.data.ReplayRepository
 import com.fahrii.musicapp.data.PlayedSong
 import com.fahrii.musicapp.data.Song
+import com.fahrii.musicapp.data.getInstance
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -158,7 +159,9 @@ class LibraryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun renamePlaylist(id: String, name: String) = repo.renamePlaylist(id, name)
 
-    fun setPlaylistThumbnail(id: String, uri: Uri) = repo.setPlaylistThumbnail(id, uri)
+    fun setPlaylistThumbnail(id: String, uri: Uri) = repo.setPlaylistThumbnail(id) {
+        getApplication<Application>().contentResolver.openInputStream(uri)
+    }
 
     fun moveInPlaylist(playlistId: String, from: Int, to: Int) =
         repo.moveInPlaylist(playlistId, from, to)

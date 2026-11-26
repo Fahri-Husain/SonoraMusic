@@ -32,12 +32,6 @@ data class ArtistResult(
     val imageUrl: String?
 )
 
-data class ArtistAlbum(
-    val title: String,
-    val artist: String,
-    val coverUrl: String?,
-    val url: String
-)
 
 /** Album lengkap: sampul dan semua lagunya sesuai urutan tracklist. */
 data class AlbumTracks(

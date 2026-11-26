@@ -37,6 +37,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.IOException
+import com.fahrii.musicapp.data.getInstance
 
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
