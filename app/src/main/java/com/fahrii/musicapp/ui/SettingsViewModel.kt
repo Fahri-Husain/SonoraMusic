@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import com.fahrii.musicapp.data.getInstance
 
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
 
