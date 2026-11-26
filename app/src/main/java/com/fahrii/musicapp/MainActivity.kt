@@ -28,6 +28,7 @@ import com.fahrii.musicapp.ui.UpdateViewModel
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import com.fahrii.musicapp.data.getInstance
 
 class MainActivity : ComponentActivity() {
 

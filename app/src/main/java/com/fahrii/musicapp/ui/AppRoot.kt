@@ -65,6 +65,7 @@ import androidx.compose.foundation.layout.padding
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.ui.platform.LocalContext
+import com.fahrii.musicapp.data.getInstance
 
 
 private const val ROUTE_HOME = "home"

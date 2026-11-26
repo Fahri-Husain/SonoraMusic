@@ -139,6 +139,7 @@ import kotlin.math.cos
 import kotlin.math.asin
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import com.fahrii.musicapp.data.getInstance
 
 // Durasi transisi saat lagu berganti (ms)
 private const val SONG_CHANGE_BG_MS = 700
