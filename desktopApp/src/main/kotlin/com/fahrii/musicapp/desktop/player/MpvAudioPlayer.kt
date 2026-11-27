@@ -83,11 +83,26 @@ class MpvAudioPlayer : AudioPlayer {
         command("seek", (positionMs.coerceAtLeast(0L) / 1000.0).toString(), "absolute")
     }
 
+    @Volatile private var fadeGain = 1f
+
     override fun setVolume(percent: Int) {
         val v = percent.coerceIn(0, 100)
-        setProperty("volume", v.toString())
         _state.update { it.copy(volume = v) }
+        applyVolume()
     }
+
+    /** Pengali 0..1 untuk crossfade. Volume mpv = volume pengguna × [gain]. */
+    fun setFadeGain(gain: Float) {
+        fadeGain = gain.coerceIn(0f, 1f)
+        applyVolume()
+    }
+
+    private fun applyVolume() {
+        setProperty("volume", String.format(java.util.Locale.ROOT, "%.1f", _state.value.volume * fadeGain))
+    }
+
+    /** Terapkan rantai filter audio mpv (lihat [MpvFilters]). String kosong menghapus semua filter. */
+    fun setAudioFilter(chain: String) = setProperty("af", chain)
 
     override fun stop() {
         loaded = false

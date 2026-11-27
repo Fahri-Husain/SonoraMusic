@@ -51,6 +51,19 @@ import com.fahrii.musicapp.player.PlayerState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.DisposableEffect
+import com.fahrii.musicapp.data.EqualizerState
+import com.fahrii.musicapp.data.isAlbumEntry
+import com.fahrii.musicapp.desktop.player.PlaybackController
+import com.fahrii.musicapp.player.QueueState
+import com.fahrii.musicapp.player.RepeatMode
+import com.fahrii.musicapp.data.FileKeyValueStore
+import com.fahrii.musicapp.data.SettingsRepository
+import java.io.File
+import androidx.compose.runtime.DisposableEffect
+import com.fahrii.musicapp.desktop.player.GlobalMediaKeys
+import androidx.compose.ui.window.isTraySupported
 
 private val Bg = Color(0xFF121212)
 private val Panel = Color(0xFF1E1E1E)
@@ -58,18 +71,42 @@ private val Accent = Color(0xFF80CBC4)
 private val Dim = Color(0xFF9E9E9E)
 
 fun main() = application {
-    val playerResult = remember { runCatching { MpvAudioPlayer() } }
+    val controllerResult = remember {
+        runCatching {
+            PlaybackController(SettingsRepository(FileKeyValueStore(File(AppDirs.data, "settings.json"))))
+        }
+    }
+    val controller = controllerResult.getOrNull()
+    var windowVisible by remember { mutableStateOf(true) }
+
+    val quit = {
+        controller?.close()
+        exitApplication()
+    }
+
+    if (controller != null) {
+        DisposableEffect(controller) {
+            val keys = GlobalMediaKeys(
+                onPlayPause = controller::toggle,
+                onNext = controller::next,
+                onPrevious = controller::previous,
+                onStop = controller::stop
+            )
+            keys.start()
+            onDispose { keys.stop() }
+        }
+        SonoraTray(controller, onShow = { windowVisible = true }, onQuit = quit)
+    }
 
     Window(
-        onCloseRequest = {
-            playerResult.getOrNull()?.release()
-            exitApplication()
-        },
+        visible = windowVisible,
+        // Dengan tray: X cuma menyembunyikan jendela, musik lanjut. Tanpa tray atau tanpa pemutar: keluar.
+        onCloseRequest = { if (controller != null && isTraySupported) windowVisible = false else quit() },
         title = "Sonora Music",
         state = rememberWindowState(size = DpSize(900.dp, 640.dp))
     ) {
         Box(Modifier.fillMaxSize().background(Bg)) {
-            playerResult.fold(
+            controllerResult.fold(
                 onSuccess = { PlayerApp(it) },
                 onFailure = { MpvMissing(it) }
             )
@@ -90,43 +127,34 @@ private fun MpvMissing(error: Throwable) {
 }
 
 @Composable
-private fun PlayerApp(player: AudioPlayer) {
+private fun PlayerApp(controller: PlaybackController) {
     val scope = rememberCoroutineScope()
-    val state by player.state.collectAsState()
+    val settings = controller.settings
+
+    val state by controller.state.collectAsState()
+    val queue by controller.queue.collectAsState()
+    val playerMessage by controller.message.collectAsState()
+    val eq by settings.equalizer.collectAsState()
+    val normalize by settings.normalizeVolume.collectAsState()
+    val crossfadeOn by settings.crossfadeEnabled.collectAsState()
+    val crossfadeSec by settings.crossfadeSeconds.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var nowPlaying by remember { mutableStateOf<Song?>(null) }
-    var message by remember { mutableStateOf<String?>(null) }
+    var searchMessage by remember { mutableStateOf<String?>(null) }
+    val playable = remember(results) { results.filterNot { it.isAlbumEntry() } }
 
     fun search() {
         val q = query.trim()
         if (q.isEmpty()) return
         scope.launch {
-            message = "Mencari…"
+            searchMessage = "Mencari…"
             runCatching { MusicRepository.search(q) }
                 .onSuccess {
                     results = it
-                    message = if (it.isEmpty()) "Tidak ada hasil" else null
+                    searchMessage = if (it.isEmpty()) "Tidak ada hasil" else null
                 }
-                .onFailure { message = "Pencarian gagal: ${it.message}" }
-        }
-    }
-
-    fun play(song: Song) {
-        scope.launch {
-            nowPlaying = song
-            message = "Mengambil stream…"
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    MusicRepository.resolvePlayableUrlBlocking(song.url, AudioQuality.HIGH)
-                }
-            }
-                .onSuccess { url ->
-                    message = null
-                    player.play(url)
-                }
-                .onFailure { message = "Gagal mengambil stream: ${it.message}" }
+                .onFailure { searchMessage = "Pencarian gagal: ${it.message}" }
         }
     }
 
@@ -157,17 +185,20 @@ private fun PlayerApp(player: AudioPlayer) {
             ) { Txt("Cari", Color.Black) }
         }
 
-        message?.let { Txt(it, Dim, 13, Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) }
+        (searchMessage ?: playerMessage)?.let {
+            Txt(it, Dim, 13, Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+        }
 
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-            items(results) { song ->
+            itemsIndexed(playable) { index, song ->
+                val isCurrent = queue.current?.url == song.url
                 Row(
-                    Modifier.fillMaxWidth().clickable { play(song) }
+                    Modifier.fillMaxWidth().clickable { controller.playList(playable, index) }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Txt(song.title, Color.White, 14)
+                        Txt(song.title, if (isCurrent) Accent else Color.White, 14)
                         Txt(song.artist, Dim, 12)
                     }
                     if (song.durationSeconds > 0) {
@@ -177,12 +208,27 @@ private fun PlayerApp(player: AudioPlayer) {
             }
         }
 
-        PlayerBar(nowPlaying, state, player)
+        PlayerBar(
+            queue = queue,
+            state = state,
+            eq = eq,
+            normalize = normalize,
+            crossfadeLabel = if (crossfadeOn) "Crossfade: ${crossfadeSec} dtk" else "Crossfade: mati",
+            controller = controller
+        )
     }
 }
 
 @Composable
-private fun PlayerBar(song: Song?, state: PlayerState, player: AudioPlayer) {
+private fun PlayerBar(
+    queue: QueueState,
+    state: PlayerState,
+    eq: EqualizerState,
+    normalize: Boolean,
+    crossfadeLabel: String,
+    controller: PlaybackController
+) {
+    val song = queue.current
     Column(Modifier.fillMaxWidth().background(Panel).padding(16.dp)) {
         Txt(song?.let { "${it.title} — ${it.artist}" } ?: "Belum ada lagu diputar", Color.White, 14)
         Spacer(Modifier.height(8.dp))
@@ -194,7 +240,7 @@ private fun PlayerBar(song: Song?, state: PlayerState, player: AudioPlayer) {
                 .pointerInput(state.durationMs) {
                     detectTapGestures { offset ->
                         if (state.durationMs > 0) {
-                            player.seekTo((offset.x / size.width * state.durationMs).toLong())
+                            controller.seekTo((offset.x / size.width * state.durationMs).toLong())
                         }
                     }
                 }
@@ -205,15 +251,36 @@ private fun PlayerBar(song: Song?, state: PlayerState, player: AudioPlayer) {
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             Txt("${formatTime(state.positionMs)} / ${formatTime(state.durationMs)}", Dim, 12)
+            Txt(
+                if (queue.songs.isEmpty()) "" else "  ·  ${queue.index + 1}/${queue.songs.size}",
+                Dim, 12
+            )
             Spacer(Modifier.weight(1f))
             Txt("Vol ${state.volume}", Dim, 12)
-            SmallButton("−") { player.setVolume(state.volume - 10) }
-            SmallButton("+") { player.setVolume(state.volume + 10) }
-            SmallButton(if (state.isPlaying) "Jeda" else "Putar") { player.toggle() }
-            SmallButton("Stop") { player.stop() }
+            SmallButton("−") { controller.setVolume(state.volume - 10) }
+            SmallButton("+") { controller.setVolume(state.volume + 10) }
         }
+
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            SmallButton("Prev") { controller.previous() }
+            SmallButton(if (state.isPlaying) "Jeda" else "Putar") { controller.toggle() }
+            SmallButton("Next") { controller.next() }
+            SmallButton("Stop") { controller.stop() }
+            Spacer(Modifier.weight(1f))
+            SmallButton(
+                when (queue.repeat) {
+                    RepeatMode.OFF -> "Ulang: mati"
+                    RepeatMode.ALL -> "Ulang: semua"
+                    RepeatMode.ONE -> "Ulang: satu"
+                }
+            ) { controller.toggleRepeat() }
+            SmallButton(crossfadeLabel) { controller.cycleCrossfade() }
+            SmallButton(if (eq.enabled) "EQ: ${eq.preset.label}" else "EQ: mati") { controller.cycleEqualizer() }
+            SmallButton(if (normalize) "Normalisasi: on" else "Normalisasi: off") { controller.toggleNormalize() }
+        }
+
         state.error?.let { Txt(it, Color(0xFFEF9A9A), 12, Modifier.padding(top = 6.dp)) }
-        if (state.ended) Txt("Selesai", Dim, 12, Modifier.padding(top = 6.dp))
     }
 }
 
