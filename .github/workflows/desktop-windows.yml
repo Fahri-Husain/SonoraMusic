@@ -43,7 +43,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SonoraMusic-windows
+          name: SonoraMusic-Windows-Installer
           path: |
             desktopApp/build/compose/binaries/main/msi/*.msi
             desktopApp/build/compose/binaries/main/exe/*.exe
