@@ -39,7 +39,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PACKAGING_JDK = $env:JAVA_HOME_17_X64
-          ./gradlew :desktopApp:packageMsi :desktopApp:packageExe --stacktrace
+          ./gradlew :desktopApp:packageMsi :desktopApp:packageExe --console=plain
 
       - uses: actions/upload-artifact@v4
         with:
